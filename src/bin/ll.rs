@@ -71,7 +71,7 @@ pub enum Commands {
     Receive(ReceiveArgs),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 pub struct CommonArgs {
     /// The IPv4 address that magicsocket will listen on.
     ///
@@ -143,8 +143,8 @@ pub struct SendArgs {
 
 #[derive(Parser, Debug)]
 pub struct ReceiveArgs {
-    /// The ticket to use to connect to the sender.
-    pub ticket: BlobTicket,
+    /// The ticket to use to connect to the sender. If omitted, the last ticket given will be used.
+    pub ticket: Option<BlobTicket>,
 
     #[clap(flatten)]
     pub common: CommonArgs,
@@ -685,7 +685,14 @@ fn show_get_error(e: &anyhow::Error) {
 }
 
 async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
-    let ticket = args.ticket;
+    let ticket = match args.ticket {
+        Some(ticket) => {
+            laplink_p2p::ticket_storage::save_last_ll_ticket(&ticket)?;
+            ticket
+        }
+        None => laplink_p2p::ticket_storage::load_last_ll_ticket()?
+            .ok_or_else(|| anyhow::anyhow!("no ticket provided and no previous ticket remembered"))?,
+    };
     let (secret_key, generated) = get_or_create_secret()?;
     if (generated && args.common.verbose > 0) || args.common.show_secret {
         let secret_key = hex::encode(secret_key.to_bytes());
@@ -776,6 +783,20 @@ async fn main() -> anyhow::Result<()> {
         Ok(args) => args,
         Err(cause) => {
             if let Some(text) = cause.get(ContextKind::InvalidSubcommand) {
+                if let Ok(ticket) = text.to_string().parse::<BlobTicket>() {
+                    let receive_args = ReceiveArgs {
+                        ticket: Some(ticket),
+                        common: CommonArgs::default(),
+                    };
+                    let res = receive(receive_args).await;
+                    if let Err(e) = &res {
+                        eprintln!("{e}");
+                    }
+                    match res {
+                        Ok(()) => std::process::exit(0),
+                        Err(_) => std::process::exit(1),
+                    }
+                }
                 eprintln!("{} \"{}\"\n", ErrorKind::InvalidSubcommand, text);
                 eprintln!("Available subcommands are");
                 for cmd in Args::command().get_subcommands() {

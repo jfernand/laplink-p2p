@@ -44,11 +44,12 @@ pub fn print_hash(hash: &iroh_blobs::Hash, format: Format) -> String {
 }
 
 /// Available command line options for configuring relays.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum RelayModeOption {
     /// Disables relays altogether.
     Disabled,
     /// Uses the default relay servers.
+    #[default]
     Default,
     /// Uses a single, custom relay server by URL.
     Custom(RelayUrl),
