@@ -34,8 +34,8 @@ use tokio::sync::mpsc;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct TuiArgs {
-    /// The ticket printed by ll-serve.
-    ticket: EndpointTicket,
+    /// The ticket printed by ll-serve. If omitted, the last remembered ticket is used.
+    ticket: Option<EndpointTicket>,
 
     #[clap(long, default_value = None)]
     magic_ipv4_addr: Option<SocketAddrV4>,
@@ -212,9 +212,17 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = TuiArgs::parse();
+    let ticket = match args.ticket {
+        Some(ticket) => {
+            laplink_p2p::ticket_storage::save_last_tui_ticket(&ticket)?;
+            ticket
+        }
+        None => laplink_p2p::ticket_storage::load_last_tui_ticket()?
+            .ok_or_else(|| anyhow::anyhow!("no ticket provided and no previous ticket remembered"))?,
+    };
     let (secret_key, _) = get_or_create_secret()?;
 
-    let lookup_by_dns = args.ticket.endpoint_addr().addrs.is_empty();
+    let lookup_by_dns = ticket.endpoint_addr().addrs.is_empty();
     let endpoint = build_endpoint(EndpointConfig {
         secret_key: secret_key.clone(),
         alpns: vec![],
@@ -227,7 +235,7 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     eprintln!("fetching listing...");
-    let listing = fetch_listing(&endpoint, &args.ticket).await?;
+    let listing = fetch_listing(&endpoint, &ticket).await?;
     let mut app = App::new(listing);
 
     let store_dir = std::env::current_dir()?.join(".ll-tui-store");
