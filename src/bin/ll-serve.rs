@@ -11,7 +11,6 @@ use iroh_blobs::{store::fs::FsStore, ticket::BlobTicket, BlobFormat, BlobsProtoc
 use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
     endpoint::{build_endpoint, EndpointConfig},
-    get_or_create_secret,
     listing::{Entry, Listing, ListingProtocol},
     transfer::import_flat,
     RelayModeOption,
@@ -22,7 +21,12 @@ use laplink_p2p::{
 #[command(version, about)]
 struct ServeArgs {
     /// Folder to serve.
+    #[clap(default_value = ".")]
     folder: PathBuf,
+
+    /// Optional ticket to remember for this folder.
+    #[clap(long)]
+    ticket: Option<EndpointTicket>,
 
     /// The IPv4 address that magicsocket will listen on.
     #[clap(long, default_value = None)]
@@ -61,16 +65,22 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run() -> anyhow::Result<()> {
     let args = ServeArgs::parse();
-    let (secret_key, generated) = get_or_create_secret()?;
-    if (generated && args.verbose > 0) || args.show_secret {
-        eprintln!("using secret key {}", hex::encode(secret_key.to_bytes()));
-    }
-
     let folder = args.folder.canonicalize()?;
     let store_dir = args
         .store_dir
         .unwrap_or_else(|| folder.join(".ll-serve-store"));
     tokio::fs::create_dir_all(&store_dir).await?;
+
+    if let Some(t) = &args.ticket {
+        laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, t)?;
+    }
+
+    let (secret_key, generated) =
+        laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir)?;
+    if (generated && args.verbose > 0) || args.show_secret {
+        eprintln!("using secret key {}", hex::encode(secret_key.to_bytes()));
+    }
+
     let store = FsStore::load(&store_dir).await?;
 
     let endpoint = build_endpoint(EndpointConfig {
@@ -120,6 +130,7 @@ async fn run() -> anyhow::Result<()> {
     router.endpoint().online().await;
 
     let ticket = EndpointTicket::new(router.endpoint().addr());
+    laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket)?;
     println!(
         "serving {} ({} files)",
         folder.display(),
