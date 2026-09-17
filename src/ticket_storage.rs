@@ -178,8 +178,13 @@ pub fn get_or_create_serve_secret(store_dir: &Path) -> anyhow::Result<(SecretKey
 mod tests {
     use super::*;
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_ll_ticket_save_load() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap();
         let temp = tempfile::tempdir().unwrap();
         std::env::set_var("LAPLINK_CONFIG_DIR", temp.path());
 
@@ -195,10 +200,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
+        std::env::remove_var("LAPLINK_CONFIG_DIR");
     }
 
     #[test]
     fn test_tui_ticket_save_load() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap();
         let temp = tempfile::tempdir().unwrap();
         std::env::set_var("LAPLINK_CONFIG_DIR", temp.path());
 
@@ -213,6 +222,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
+        std::env::remove_var("LAPLINK_CONFIG_DIR");
     }
 
     #[test]
