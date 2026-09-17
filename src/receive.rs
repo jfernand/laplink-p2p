@@ -46,14 +46,21 @@ pub async fn receive_collection(
     export_root: PathBuf,
     on_progress: Option<mpsc::Sender<ReceiveProgress>>,
 ) -> anyhow::Result<ReceiveCollectionOutcome> {
-    let addr = ticket.addr().clone();
+    let addr = ticket
+        .addr()
+        .clone();
     let endpoint = build_endpoint(cfg).await?;
     tokio::fs::create_dir_all(&store_dir).await?;
     let db = FsStore::load(&store_dir).await?;
     let hash_and_format = ticket.hash_and_format();
-    let local = db.remote().local(hash_and_format).await?;
+    let local = db
+        .remote()
+        .local(hash_and_format)
+        .await?;
     let (stats, total_files, payload_size) = if !local.is_complete() {
-        let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
+        let connection = endpoint
+            .connect(addr, iroh_blobs::protocol::ALPN)
+            .await?;
         let (_hash_seq, sizes) = iroh_blobs::get::request::get_hash_seq_and_sizes(
             &connection,
             &hash_and_format.hash,
@@ -61,9 +68,18 @@ pub async fn receive_collection(
             None,
         )
         .await?;
-        let total_size = sizes.iter().copied().sum::<u64>();
-        let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
-        let total_files = (sizes.len().saturating_sub(1)) as u64;
+        let total_size = sizes
+            .iter()
+            .copied()
+            .sum::<u64>();
+        let payload_size = sizes
+            .iter()
+            .skip(2)
+            .copied()
+            .sum::<u64>();
+        let total_files = (sizes
+            .len()
+            .saturating_sub(1)) as u64;
         let local_size = local.local_bytes();
         if let Some(tx) = &on_progress {
             tx.send(ReceiveProgress::Sizes {
@@ -75,14 +91,21 @@ pub async fn receive_collection(
             .await
             .ok();
         }
-        let get = db.remote().execute_get(connection, local.missing());
+        let get = db
+            .remote()
+            .execute_get(connection, local.missing());
         let mut stream = get.stream();
         let mut stats = Stats::default();
-        while let Some(item) = stream.next().await {
+        while let Some(item) = stream
+            .next()
+            .await
+        {
             match item {
                 GetProgressItem::Progress(offset) => {
                     if let Some(tx) = &on_progress {
-                        tx.send(ReceiveProgress::Progress(offset)).await.ok();
+                        tx.send(ReceiveProgress::Progress(offset))
+                            .await
+                            .ok();
                     }
                 }
                 GetProgressItem::Done(value) => {
@@ -94,12 +117,16 @@ pub async fn receive_collection(
         }
         (stats, total_files, payload_size)
     } else {
-        let total_files = local.children().unwrap_or(1) - 1;
+        let total_files = local
+            .children()
+            .unwrap_or(1)
+            - 1;
         (Stats::default(), total_files, 0)
     };
     let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
     export_collection(&db, collection, &export_root).await?;
-    db.shutdown().await?;
+    db.shutdown()
+        .await?;
     Ok(ReceiveCollectionOutcome {
         total_files,
         payload_size,
@@ -117,22 +144,36 @@ pub async fn receive_single(
     export_path: PathBuf,
     on_progress: Option<mpsc::Sender<u64>>,
 ) -> anyhow::Result<Stats> {
-    let addr = ticket.addr().clone();
+    let addr = ticket
+        .addr()
+        .clone();
     let endpoint = build_endpoint(cfg).await?;
     tokio::fs::create_dir_all(&store_dir).await?;
     let db = FsStore::load(&store_dir).await?;
     let hash_and_format = ticket.hash_and_format();
-    let local = db.remote().local(hash_and_format).await?;
+    let local = db
+        .remote()
+        .local(hash_and_format)
+        .await?;
     let stats = if !local.is_complete() {
-        let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
-        let get = db.remote().execute_get(connection, local.missing());
+        let connection = endpoint
+            .connect(addr, iroh_blobs::protocol::ALPN)
+            .await?;
+        let get = db
+            .remote()
+            .execute_get(connection, local.missing());
         let mut stream = get.stream();
         let mut stats = Stats::default();
-        while let Some(item) = stream.next().await {
+        while let Some(item) = stream
+            .next()
+            .await
+        {
             match item {
                 GetProgressItem::Progress(offset) => {
                     if let Some(tx) = &on_progress {
-                        tx.send(offset).await.ok();
+                        tx.send(offset)
+                            .await
+                            .ok();
                     }
                 }
                 GetProgressItem::Done(value) => {
@@ -147,6 +188,7 @@ pub async fn receive_single(
         Stats::default()
     };
     export_one(&db, hash_and_format.hash, &export_path).await?;
-    db.shutdown().await?;
+    db.shutdown()
+        .await?;
     Ok(stats)
 }

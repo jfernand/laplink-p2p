@@ -65,7 +65,9 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run() -> anyhow::Result<()> {
     let args = ServeArgs::parse();
-    let folder = args.folder.canonicalize()?;
+    let folder = args
+        .folder
+        .canonicalize()?;
     let store_dir = args
         .store_dir
         .unwrap_or_else(|| folder.join(".ll-serve-store"));
@@ -127,14 +129,23 @@ async fn run() -> anyhow::Result<()> {
             ListingProtocol::new(listing.clone()),
         )
         .spawn();
-    router.endpoint().online().await;
+    router
+        .endpoint()
+        .online()
+        .await;
 
-    let ticket = EndpointTicket::new(router.endpoint().addr());
+    let ticket = EndpointTicket::new(
+        router
+            .endpoint()
+            .addr(),
+    );
     laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket)?;
     println!(
         "serving {} ({} files)",
         folder.display(),
-        listing.entries.len()
+        listing
+            .entries
+            .len()
     );
     println!("to browse, use");
     println!("ll-tui {ticket}");

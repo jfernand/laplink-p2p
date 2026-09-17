@@ -165,7 +165,9 @@ async fn import(
     let parallelism = num_cpus::get();
     let path = path.canonicalize()?;
     anyhow::ensure!(path.exists(), "path {} does not exist", path.display());
-    let root = path.parent().context("context get parent")?;
+    let root = path
+        .parent()
+        .context("context get parent")?;
     // walkdir also works for files, so we don't need to special case them
     let files = WalkDir::new(path.clone()).into_iter();
     // flatten the directory structure into a list of (name, path) pairs.
@@ -173,7 +175,10 @@ async fn import(
     let data_sources: Vec<(String, PathBuf)> = files
         .map(|entry| {
             let entry = entry?;
-            if !entry.file_type().is_file() {
+            if !entry
+                .file_type()
+                .is_file()
+            {
                 // Skip symlinks. Directories are handled by WalkDir.
                 return Ok(None);
             }
@@ -202,7 +207,9 @@ async fn import(
                     mode: ImportMode::TryReference,
                     format: BlobFormat::Raw,
                 });
-                let mut stream = import.stream().await;
+                let mut stream = import
+                    .stream()
+                    .await;
                 let mut item_size = 0;
                 let temp_tag = loop {
                     let item = stream
@@ -246,14 +253,20 @@ async fn import(
     op.finish_and_clear();
     names_and_tags.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
     // total size of all files
-    let size = names_and_tags.iter().map(|(_, _, size)| *size).sum::<u64>();
+    let size = names_and_tags
+        .iter()
+        .map(|(_, _, size)| *size)
+        .sum::<u64>();
     // collect the (name, hash) tuples into a collection
     // we must also keep the tags around so the data does not get gced.
     let (collection, tags) = names_and_tags
         .into_iter()
         .map(|(name, tag, _)| ((name, tag.hash()), tag))
         .unzip::<_, _, Collection, Vec<_>>();
-    let temp_tag = collection.clone().store(db).await?;
+    let temp_tag = collection
+        .clone()
+        .store(db)
+        .await?;
     // now that the collection is stored, we can drop the tags
     // data is protected by the collection
     drop(tags);
@@ -357,7 +370,10 @@ async fn show_provide_progress(
             error!("got request update for unknown connection {connection_id}");
             continue;
         };
-        let Some(pb) = connection.requests.get_mut(&request_id) else {
+        let Some(pb) = connection
+            .requests
+            .get_mut(&request_id)
+        else {
             error!("got update for unknown request {request_id}");
             continue;
         };
@@ -371,13 +387,19 @@ async fn show_provide_progress(
             }
             RequestUpdate::Completed(TransferCompleted { .. }) => {
                 // todo: show stats and hide after a delay
-                if let Some(pb) = connection.requests.remove(&request_id) {
+                if let Some(pb) = connection
+                    .requests
+                    .remove(&request_id)
+                {
                     pb.finish_and_clear();
                 }
             }
             RequestUpdate::Aborted(TransferAborted { .. }) => {
                 // todo: show stats and hide after a delay
-                if let Some(pb) = connection.requests.remove(&request_id) {
+                if let Some(pb) = connection
+                    .requests
+                    .remove(&request_id)
+                {
                     pb.finish_and_clear();
                 }
             }
@@ -388,7 +410,15 @@ async fn show_provide_progress(
 
 async fn send(args: SendArgs) -> anyhow::Result<()> {
     let (secret_key, generated) = get_or_create_secret()?;
-    if (generated && args.common.verbose > 0) || args.common.show_secret {
+    if (generated
+        && args
+            .common
+            .verbose
+            > 0)
+        || args
+            .common
+            .show_secret
+    {
         let secret_key = hex::encode(secret_key.to_bytes());
         eprintln!("using secret key {secret_key}");
     }
@@ -430,14 +460,23 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
         let endpoint = build_endpoint(EndpointConfig {
             secret_key,
             alpns: vec![iroh_blobs::protocol::ALPN.to_vec()],
-            relay: args.common.relay,
-            magic_ipv4_addr: args.common.magic_ipv4_addr,
-            magic_ipv6_addr: args.common.magic_ipv6_addr,
+            relay: args
+                .common
+                .relay,
+            magic_ipv4_addr: args
+                .common
+                .magic_ipv4_addr,
+            magic_ipv6_addr: args
+                .common
+                .magic_ipv6_addr,
             publish_addr: ticket_type == AddrInfoOptions::Id,
             lookup_by_dns: false,
         })
         .await?;
-        let draw_target = if args.common.no_progress {
+        let draw_target = if args
+            .common
+            .no_progress
+        {
             ProgressDrawTarget::hidden()
         } else {
             ProgressDrawTarget::stderr()
@@ -453,7 +492,10 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
             .accept(iroh_blobs::ALPN, blobs.clone())
             .spawn();
         // wait for the endpoint to figure out its address before making a ticket
-        router.endpoint().online().await;
+        router
+            .endpoint()
+            .online()
+            .await;
         anyhow::Ok((router, import_result, dt))
     };
     let (router, (temp_tag, size, collection), dt) = select! {
@@ -465,7 +507,9 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
     let hash = temp_tag.hash();
 
     // make a ticket
-    let mut addr = router.endpoint().addr();
+    let mut addr = router
+        .endpoint()
+        .addr();
     laplink_p2p::apply_options(&mut addr, ticket_type);
     let ticket = BlobTicket::new(addr, hash, BlobFormat::HashSeq);
     let entry_type = if path.is_file() { "file" } else { "directory" };
@@ -474,11 +518,26 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
         entry_type,
         path.display(),
         HumanBytes(size),
-        print_hash(&hash, args.common.format),
+        print_hash(
+            &hash,
+            args.common
+                .format
+        ),
     );
-    if args.common.verbose > 1 {
+    if args
+        .common
+        .verbose
+        > 1
+    {
         for (name, hash) in collection.iter() {
-            println!("    {} {name}", print_hash(hash, args.common.format));
+            println!(
+                "    {} {name}",
+                print_hash(
+                    hash,
+                    args.common
+                        .format
+                )
+            );
         }
         println!(
             "{}s, {}/s",
@@ -503,7 +562,9 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
     // drop everything that owns blobs to close the progress sender
     drop(router);
     // await progress completion so the progress bar is cleared
-    progress.await.ok();
+    progress
+        .await
+        .ok();
 
     Ok(())
 }
@@ -637,7 +698,10 @@ pub async fn show_download_progress(
 ) -> anyhow::Result<()> {
     let op = mp.add(make_download_progress());
     let mut local_size = 0;
-    while let Some(item) = recv.recv().await {
+    while let Some(item) = recv
+        .recv()
+        .await
+    {
         match item {
             ReceiveProgress::Sizes {
                 total_files,
@@ -690,32 +754,57 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
             laplink_p2p::ticket_storage::save_last_ll_ticket(&ticket)?;
             ticket
         }
-        None => laplink_p2p::ticket_storage::load_last_ll_ticket()?
-            .ok_or_else(|| anyhow::anyhow!("no ticket provided and no previous ticket remembered"))?,
+        None => laplink_p2p::ticket_storage::load_last_ll_ticket()?.ok_or_else(|| {
+            anyhow::anyhow!("no ticket provided and no previous ticket remembered")
+        })?,
     };
     let (secret_key, generated) = get_or_create_secret()?;
-    if (generated && args.common.verbose > 0) || args.common.show_secret {
+    if (generated
+        && args
+            .common
+            .verbose
+            > 0)
+        || args
+            .common
+            .show_secret
+    {
         let secret_key = hex::encode(secret_key.to_bytes());
         eprintln!("using secret key {secret_key}");
     }
 
-    let dir_name = format!(".ll-recv-{}", ticket.hash().to_hex());
+    let dir_name = format!(
+        ".ll-recv-{}",
+        ticket
+            .hash()
+            .to_hex()
+    );
     let store_dir = std::env::current_dir()?.join(dir_name);
     let export_root = std::env::current_dir()?;
 
-    let lookup_by_dns = ticket.addr().is_empty();
+    let lookup_by_dns = ticket
+        .addr()
+        .is_empty();
     let cfg = EndpointConfig {
         secret_key,
         alpns: vec![],
-        relay: args.common.relay,
-        magic_ipv4_addr: args.common.magic_ipv4_addr,
-        magic_ipv6_addr: args.common.magic_ipv6_addr,
+        relay: args
+            .common
+            .relay,
+        magic_ipv4_addr: args
+            .common
+            .magic_ipv4_addr,
+        magic_ipv6_addr: args
+            .common
+            .magic_ipv6_addr,
         publish_addr: false,
         lookup_by_dns,
     };
 
     let mp: MultiProgress = MultiProgress::new();
-    let draw_target = if args.common.no_progress {
+    let draw_target = if args
+        .common
+        .no_progress
+    {
         ProgressDrawTarget::hidden()
     } else {
         ProgressDrawTarget::stderr()
@@ -723,8 +812,12 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
     mp.set_draw_target(draw_target);
 
     let hash_for_display = ticket.hash();
-    let format = args.common.format;
-    let verbose = args.common.verbose;
+    let format = args
+        .common
+        .format;
+    let verbose = args
+        .common
+        .verbose;
 
     let (progress_tx, progress_rx) = mpsc::channel(32);
     let progress_task = tokio::spawn(show_download_progress(
@@ -750,7 +843,9 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
             std::process::exit(130);
         }
     };
-    progress_task.await.ok();
+    progress_task
+        .await
+        .ok();
 
     let outcome = match result {
         Ok(outcome) => outcome,
@@ -760,16 +855,27 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
         }
     };
 
-    tokio::fs::remove_dir_all(&store_dir).await.ok();
+    tokio::fs::remove_dir_all(&store_dir)
+        .await
+        .ok();
     if verbose > 0 {
         println!(
             "downloaded {} files, {}. took {} ({}/s)",
             outcome.total_files,
             HumanBytes(outcome.payload_size),
-            HumanDuration(outcome.stats.elapsed),
+            HumanDuration(
+                outcome
+                    .stats
+                    .elapsed
+            ),
             HumanBytes(
-                (outcome.stats.total_bytes_read() as f64 / outcome.stats.elapsed.as_secs_f64())
-                    as u64
+                (outcome
+                    .stats
+                    .total_bytes_read() as f64
+                    / outcome
+                        .stats
+                        .elapsed
+                        .as_secs_f64()) as u64
             ),
         );
     }
@@ -783,7 +889,10 @@ async fn main() -> anyhow::Result<()> {
         Ok(args) => args,
         Err(cause) => {
             if let Some(text) = cause.get(ContextKind::InvalidSubcommand) {
-                if let Ok(ticket) = text.to_string().parse::<BlobTicket>() {
+                if let Ok(ticket) = text
+                    .to_string()
+                    .parse::<BlobTicket>()
+                {
                     let receive_args = ReceiveArgs {
                         ticket: Some(ticket),
                         common: CommonArgs::default(),

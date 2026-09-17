@@ -55,14 +55,27 @@ struct Row {
 }
 
 fn build_rows(listing: &Listing) -> Vec<Row> {
-    let mut entries: Vec<(usize, &Entry)> = listing.entries.iter().enumerate().collect();
-    entries.sort_by(|a, b| a.1.path.cmp(&b.1.path));
+    let mut entries: Vec<(usize, &Entry)> = listing
+        .entries
+        .iter()
+        .enumerate()
+        .collect();
+    entries.sort_by(|a, b| {
+        a.1.path
+            .cmp(&b.1.path)
+    });
     let mut rows = Vec::new();
     let mut seen_dirs: HashSet<String> = HashSet::new();
     for (idx, entry) in entries {
-        let parts: Vec<&str> = entry.path.split('/').collect();
+        let parts: Vec<&str> = entry
+            .path
+            .split('/')
+            .collect();
         let mut prefix = String::new();
-        for (depth, part) in parts.iter().enumerate() {
+        for (depth, part) in parts
+            .iter()
+            .enumerate()
+        {
             let is_last = depth + 1 == parts.len();
             if !prefix.is_empty() {
                 prefix.push('/');
@@ -110,7 +123,10 @@ impl App {
         let file_rows = rows
             .iter()
             .enumerate()
-            .filter(|(_, r)| r.entry.is_some())
+            .filter(|(_, r)| {
+                r.entry
+                    .is_some()
+            })
             .map(|(i, _)| i)
             .collect();
         Self {
@@ -125,25 +141,38 @@ impl App {
     }
 
     fn move_up(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
+        self.selected = self
+            .selected
+            .saturating_sub(1);
     }
 
     fn move_down(&mut self) {
-        if self.selected + 1 < self.file_rows.len() {
+        if self.selected + 1
+            < self
+                .file_rows
+                .len()
+        {
             self.selected += 1;
         }
     }
 
     fn selected_entry(&self) -> Option<&Entry> {
-        let row = *self.file_rows.get(self.selected)?;
+        let row = *self
+            .file_rows
+            .get(self.selected)?;
         let idx = self.rows[row].entry?;
-        self.listing.entries.get(idx)
+        self.listing
+            .entries
+            .get(idx)
     }
 }
 
 async fn recv_download(rx: &mut Option<mpsc::Receiver<DownloadEvent>>) -> Option<DownloadEvent> {
     match rx {
-        Some(r) => r.recv().await,
+        Some(r) => {
+            r.recv()
+                .await
+        }
         None => std::future::pending().await,
     }
 }
@@ -174,8 +203,17 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         ])
         .split(f.area());
 
-    let header = Paragraph::new(format!("{} entries", app.listing.entries.len()))
-        .block(Block::default().borders(Borders::ALL).title("ll-tui"));
+    let header = Paragraph::new(format!(
+        "{} entries",
+        app.listing
+            .entries
+            .len()
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("ll-tui"),
+    );
     f.render_widget(header, chunks[0]);
 
     let items: Vec<ListItem> = app
@@ -183,7 +221,10 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         .iter()
         .map(|row| {
             let indent = "  ".repeat(row.depth);
-            let style = if row.entry.is_some() {
+            let style = if row
+                .entry
+                .is_some()
+            {
                 Style::default()
             } else {
                 Style::default().add_modifier(Modifier::DIM)
@@ -192,11 +233,18 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         })
         .collect();
     let mut state = ListState::default();
-    if let Some(&row) = app.file_rows.get(app.selected) {
+    if let Some(&row) = app
+        .file_rows
+        .get(app.selected)
+    {
         state.select(Some(row));
     }
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("files"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("files"),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::Blue)
@@ -204,8 +252,15 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         );
     f.render_stateful_widget(list, chunks[1], &mut state);
 
-    let status = Paragraph::new(app.status.as_str())
-        .block(Block::default().borders(Borders::ALL).title("status"));
+    let status = Paragraph::new(
+        app.status
+            .as_str(),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("status"),
+    );
     f.render_widget(status, chunks[2]);
 }
 
@@ -217,16 +272,22 @@ async fn main() -> anyhow::Result<()> {
             laplink_p2p::ticket_storage::save_last_tui_ticket(&ticket)?;
             ticket
         }
-        None => laplink_p2p::ticket_storage::load_last_tui_ticket()?
-            .ok_or_else(|| anyhow::anyhow!("no ticket provided and no previous ticket remembered"))?,
+        None => laplink_p2p::ticket_storage::load_last_tui_ticket()?.ok_or_else(|| {
+            anyhow::anyhow!("no ticket provided and no previous ticket remembered")
+        })?,
     };
     let (secret_key, _) = get_or_create_secret()?;
 
-    let lookup_by_dns = ticket.endpoint_addr().addrs.is_empty();
+    let lookup_by_dns = ticket
+        .endpoint_addr()
+        .addrs
+        .is_empty();
     let endpoint = build_endpoint(EndpointConfig {
         secret_key: secret_key.clone(),
         alpns: vec![],
-        relay: args.relay.clone(),
+        relay: args
+            .relay
+            .clone(),
         magic_ipv4_addr: args.magic_ipv4_addr,
         magic_ipv6_addr: args.magic_ipv6_addr,
         publish_addr: false,
@@ -334,6 +395,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     drop(terminal);
-    tokio::fs::remove_dir_all(&store_dir).await.ok();
+    tokio::fs::remove_dir_all(&store_dir)
+        .await
+        .ok();
     Ok(())
 }

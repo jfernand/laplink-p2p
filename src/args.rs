@@ -19,7 +19,10 @@ impl FromStr for Format {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
+        match s
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "hex" => Ok(Format::Hex),
             "cid" => Ok(Format::Cid),
             _ => Err(anyhow::anyhow!("invalid format")),
@@ -38,7 +41,9 @@ impl Display for Format {
 
 pub fn print_hash(hash: &iroh_blobs::Hash, format: Format) -> String {
     match format {
-        Format::Hex => hash.to_hex().to_string(),
+        Format::Hex => hash
+            .to_hex()
+            .to_string(),
         Format::Cid => hash.to_string(),
     }
 }
@@ -117,16 +122,19 @@ pub enum AddrInfoOptions {
 pub fn apply_options(addr: &mut EndpointAddr, opts: AddrInfoOptions) {
     match opts {
         AddrInfoOptions::Id => {
-            addr.addrs.clear();
+            addr.addrs
+                .clear();
         }
         AddrInfoOptions::RelayAndAddresses => {
             // nothing to do
         }
         AddrInfoOptions::Relay => {
-            addr.addrs.retain(|a| a.is_relay());
+            addr.addrs
+                .retain(|a| a.is_relay());
         }
         AddrInfoOptions::Addresses => {
-            addr.addrs.retain(|a| a.is_ip());
+            addr.addrs
+                .retain(|a| a.is_ip());
         }
     }
 }

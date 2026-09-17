@@ -27,12 +27,17 @@ use crate::paths::{canonicalized_path_to_string, get_export_path};
 pub fn walk_data_sources(path: &Path) -> anyhow::Result<Vec<(String, PathBuf)>> {
     let path = path.canonicalize()?;
     anyhow::ensure!(path.exists(), "path {} does not exist", path.display());
-    let root = path.parent().context("context get parent")?;
+    let root = path
+        .parent()
+        .context("context get parent")?;
     let files = WalkDir::new(path.clone()).into_iter();
     files
         .map(|entry| {
             let entry = entry?;
-            if !entry.file_type().is_file() {
+            if !entry
+                .file_type()
+                .is_file()
+            {
                 // Skip symlinks. Directories are handled by WalkDir.
                 return Ok(None);
             }
@@ -53,7 +58,9 @@ async fn import_one(db: &Store, path: PathBuf) -> anyhow::Result<(TempTag, u64)>
         mode: iroh_blobs::api::blobs::ImportMode::TryReference,
         format: BlobFormat::Raw,
     });
-    let mut stream = import.stream().await;
+    let mut stream = import
+        .stream()
+        .await;
     let mut item_size = 0;
     let temp_tag = loop {
         let item = stream
@@ -98,14 +105,20 @@ pub async fn import_collection(
         .into_iter()
         .collect::<anyhow::Result<Vec<_>>>()?;
     names_and_tags.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
-    let size = names_and_tags.iter().map(|(_, _, size)| *size).sum::<u64>();
+    let size = names_and_tags
+        .iter()
+        .map(|(_, _, size)| *size)
+        .sum::<u64>();
     // collect the (name, hash) tuples into a collection
     // we must also keep the tags around so the data does not get gced.
     let (collection, tags) = names_and_tags
         .into_iter()
         .map(|(name, tag, _)| ((name, tag.hash()), tag))
         .unzip::<_, _, Collection, Vec<_>>();
-    let temp_tag = collection.clone().store(db).await?;
+    let temp_tag = collection
+        .clone()
+        .store(db)
+        .await?;
     // now that the collection is stored, we can drop the tags
     // data is protected by the collection
     drop(tags);
@@ -124,7 +137,10 @@ fn walk_dir_contents(root: &Path) -> anyhow::Result<Vec<(String, PathBuf)>> {
         .into_iter()
         .map(|entry| {
             let entry = entry?;
-            if !entry.file_type().is_file() {
+            if !entry
+                .file_type()
+                .is_file()
+            {
                 return Ok(None);
             }
             let path = entry.into_path();
@@ -197,7 +213,10 @@ pub async fn export_one(db: &Store, hash: Hash, target: &Path) -> anyhow::Result
         })
         .stream()
         .await;
-    while let Some(item) = stream.next().await {
+    while let Some(item) = stream
+        .next()
+        .await
+    {
         match item {
             ExportProgressItem::Size(_) | ExportProgressItem::CopyProgress(_) => {}
             ExportProgressItem::Done => {}

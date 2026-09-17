@@ -60,18 +60,32 @@ fn send_recv_file() {
     let src_dir = tempfile::tempdir().unwrap();
     let tgt_dir = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
-    let src_file = src_dir.path().join(name);
+    let src_file = src_dir
+        .path()
+        .join(name);
     std::fs::write(&src_file, &data).unwrap();
-    let mut send_cmd = duct::cmd(ll_bin(), ["send", src_file.as_os_str().to_str().unwrap()])
-        .dir(src_dir.path())
-        .env("LAPLINK_CONFIG_DIR", config_dir.path())
-        .env_remove("RUST_LOG") // disable tracing
-        .stderr_to_stdout()
-        .reader()
-        .unwrap();
+    let mut send_cmd = duct::cmd(
+        ll_bin(),
+        [
+            "send",
+            src_file
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        ],
+    )
+    .dir(src_dir.path())
+    .env("LAPLINK_CONFIG_DIR", config_dir.path())
+    .env_remove("RUST_LOG") // disable tracing
+    .stderr_to_stdout()
+    .reader()
+    .unwrap();
     let output = read_ascii_lines(3, &mut send_cmd).unwrap();
     let output = String::from_utf8(output).unwrap();
-    let ticket = output.split_ascii_whitespace().last().unwrap();
+    let ticket = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
     let ticket = BlobTicket::from_str(ticket).unwrap();
     let receive_output = duct::cmd(ll_bin(), ["receive", &ticket.to_string()])
         .dir(tgt_dir.path())
@@ -80,8 +94,12 @@ fn send_recv_file() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output.status.success());
-    let tgt_file = tgt_dir.path().join(name);
+    assert!(receive_output
+        .status
+        .success());
+    let tgt_file = tgt_dir
+        .path()
+        .join(name);
     let tgt_data = std::fs::read(tgt_file).unwrap();
     assert_eq!(tgt_data, data);
 }
@@ -102,21 +120,35 @@ fn send_recv_dir() {
     let src_dir = tempfile::tempdir().unwrap();
     let tgt_dir = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
-    let src_data_dir = src_dir.path().join("data");
-    let tgt_data_dir = tgt_dir.path().join("data");
+    let src_data_dir = src_dir
+        .path()
+        .join("data");
+    let tgt_data_dir = tgt_dir
+        .path()
+        .join("data");
     // create a complex directory structure
     for i in 0..5 {
         for j in 0..5 {
             for k in 0..5 {
                 let (name, data) = create_file(&src_data_dir, i, j, k);
-                std::fs::create_dir_all(name.parent().unwrap()).unwrap();
+                std::fs::create_dir_all(
+                    name.parent()
+                        .unwrap(),
+                )
+                .unwrap();
                 std::fs::write(&name, &data).unwrap();
             }
         }
     }
     let mut send_cmd = duct::cmd(
         ll_bin(),
-        ["send", src_data_dir.as_os_str().to_str().unwrap()],
+        [
+            "send",
+            src_data_dir
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        ],
     )
     .dir(src_dir.path())
     .env("LAPLINK_CONFIG_DIR", config_dir.path())
@@ -126,7 +158,10 @@ fn send_recv_dir() {
     .unwrap();
     let output = read_ascii_lines(3, &mut send_cmd).unwrap();
     let output = String::from_utf8(output).unwrap();
-    let ticket = output.split_ascii_whitespace().last().unwrap();
+    let ticket = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
     let ticket = BlobTicket::from_str(ticket).unwrap();
     let receive_output = duct::cmd(ll_bin(), ["receive", &ticket.to_string()])
         .dir(tgt_dir.path())
@@ -135,7 +170,9 @@ fn send_recv_dir() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output.status.success());
+    assert!(receive_output
+        .status
+        .success());
     // validate directory structure
     for i in 0..5 {
         for j in 0..5 {
@@ -157,20 +194,34 @@ fn ll_remembers_ticket() {
     let tgt_dir2 = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
 
-    let src_file = src_dir.path().join(name);
+    let src_file = src_dir
+        .path()
+        .join(name);
     std::fs::write(&src_file, &data).unwrap();
 
-    let mut send_cmd = duct::cmd(ll_bin(), ["send", src_file.as_os_str().to_str().unwrap()])
-        .dir(src_dir.path())
-        .env("LAPLINK_CONFIG_DIR", config_dir.path())
-        .env_remove("RUST_LOG")
-        .stderr_to_stdout()
-        .reader()
-        .unwrap();
+    let mut send_cmd = duct::cmd(
+        ll_bin(),
+        [
+            "send",
+            src_file
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        ],
+    )
+    .dir(src_dir.path())
+    .env("LAPLINK_CONFIG_DIR", config_dir.path())
+    .env_remove("RUST_LOG")
+    .stderr_to_stdout()
+    .reader()
+    .unwrap();
 
     let output = read_ascii_lines(3, &mut send_cmd).unwrap();
     let output = String::from_utf8(output).unwrap();
-    let ticket = output.split_ascii_whitespace().last().unwrap();
+    let ticket = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
     let ticket = BlobTicket::from_str(ticket).unwrap();
 
     // 1. Receive by explicitly specifying the ticket with `receive <ticket>`.
@@ -181,8 +232,15 @@ fn ll_remembers_ticket() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output.status.success());
-    let tgt_data1 = std::fs::read(tgt_dir1.path().join(name)).unwrap();
+    assert!(receive_output
+        .status
+        .success());
+    let tgt_data1 = std::fs::read(
+        tgt_dir1
+            .path()
+            .join(name),
+    )
+    .unwrap();
     assert_eq!(tgt_data1, data);
 
     // 2. Receive in another directory WITHOUT specifying the ticket (`ll receive`).
@@ -193,8 +251,15 @@ fn ll_remembers_ticket() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output2.status.success());
-    let tgt_data2 = std::fs::read(tgt_dir2.path().join(name)).unwrap();
+    assert!(receive_output2
+        .status
+        .success());
+    let tgt_data2 = std::fs::read(
+        tgt_dir2
+            .path()
+            .join(name),
+    )
+    .unwrap();
     assert_eq!(tgt_data2, data);
 
     // 3. In a fresh config dir with no remembered ticket, `ll receive` should fail.
@@ -208,7 +273,9 @@ fn ll_remembers_ticket() {
         .unchecked()
         .run()
         .unwrap();
-    assert!(!receive_output3.status.success());
+    assert!(!receive_output3
+        .status
+        .success());
 }
 
 #[test]
@@ -222,7 +289,9 @@ fn ll_tui_remembers_ticket() {
         .unchecked()
         .run()
         .unwrap();
-    assert!(!output.status.success());
+    assert!(!output
+        .status
+        .success());
 }
 
 #[test]
@@ -234,23 +303,37 @@ fn ll_serve_remembers_ticket_arg() {
         .env("LAPLINK_CONFIG_DIR", config_dir.path())
         .run()
         .unwrap();
-    assert!(output.status.success());
+    assert!(output
+        .status
+        .success());
 }
 
 #[test]
 fn ll_serve_per_folder_persistence() {
     let folder = tempfile::tempdir().unwrap();
-    let store_dir = folder.path().join(".ll-serve-store");
+    let store_dir = folder
+        .path()
+        .join(".ll-serve-store");
 
     // Pre-create some file to serve
-    std::fs::write(folder.path().join("file.txt"), b"hello").unwrap();
+    std::fs::write(
+        folder
+            .path()
+            .join("file.txt"),
+        b"hello",
+    )
+    .unwrap();
 
     // Verify get_or_create_serve_secret creates persistent key in store_dir
-    let (secret1, gen1) = laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
+    let (secret1, gen1) =
+        laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
     assert!(gen1);
-    assert!(store_dir.join("secret_key").exists());
+    assert!(store_dir
+        .join("secret_key")
+        .exists());
 
-    let (secret2, gen2) = laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
+    let (secret2, gen2) =
+        laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
     assert!(!gen2);
     assert_eq!(secret1.to_bytes(), secret2.to_bytes());
 
@@ -259,6 +342,8 @@ fn ll_serve_per_folder_persistence() {
     let ticket = iroh_tickets::endpoint::EndpointTicket::new(addr);
     laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket).unwrap();
 
-    let loaded = laplink_p2p::ticket_storage::load_serve_ticket(&store_dir).unwrap().unwrap();
+    let loaded = laplink_p2p::ticket_storage::load_serve_ticket(&store_dir)
+        .unwrap()
+        .unwrap();
     assert_eq!(loaded.to_string(), ticket.to_string());
 }

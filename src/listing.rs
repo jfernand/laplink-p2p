@@ -72,7 +72,10 @@ impl ListingProtocol {
 
 impl ProtocolHandler for ListingProtocol {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
-        let (mut send, mut recv) = conn.accept_bi().await.map_err(AcceptError::from_err)?;
+        let (mut send, mut recv) = conn
+            .accept_bi()
+            .await
+            .map_err(AcceptError::from_err)?;
         let req_bytes = recv
             .read_to_end(MAX_REQUEST_SIZE)
             .await
@@ -84,11 +87,14 @@ impl ProtocolHandler for ListingProtocol {
         send.write_all(&resp_bytes)
             .await
             .map_err(AcceptError::from_err)?;
-        send.finish().ok();
+        send.finish()
+            .ok();
         // Wait for the peer to receive all of the response before tearing down the
         // connection — otherwise the router may close it as soon as this future returns,
         // racing the still-in-flight bytes.
-        send.stopped().await.ok();
+        send.stopped()
+            .await
+            .ok();
         Ok(())
     }
 }
@@ -98,13 +104,21 @@ pub async fn fetch_listing(
     endpoint: &Endpoint,
     ticket: &EndpointTicket,
 ) -> anyhow::Result<Listing> {
-    let addr = ticket.endpoint_addr().clone();
-    let conn = endpoint.connect(addr, ALPN).await?;
-    let (mut send, mut recv) = conn.open_bi().await?;
+    let addr = ticket
+        .endpoint_addr()
+        .clone();
+    let conn = endpoint
+        .connect(addr, ALPN)
+        .await?;
+    let (mut send, mut recv) = conn
+        .open_bi()
+        .await?;
     send.write_all(&postcard::to_stdvec(&ListRequest::V0)?)
         .await?;
     send.finish()?;
-    let resp_bytes = recv.read_to_end(MAX_LISTING_SIZE).await?;
+    let resp_bytes = recv
+        .read_to_end(MAX_LISTING_SIZE)
+        .await?;
     let ListResponse::V0(listing) = postcard::from_bytes(&resp_bytes)?;
     Ok(listing)
 }

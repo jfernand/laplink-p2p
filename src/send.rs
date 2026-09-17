@@ -44,7 +44,10 @@ pub async fn start_send(
     let router = iroh::protocol::Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, blobs.clone())
         .spawn();
-    router.endpoint().online().await;
+    router
+        .endpoint()
+        .online()
+        .await;
 
     Ok(SendSession {
         router,

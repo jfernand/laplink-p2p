@@ -31,7 +31,10 @@ pub async fn build_endpoint(cfg: EndpointConfig) -> anyhow::Result<Endpoint> {
     let mut builder = Endpoint::builder(presets::Minimal)
         .alpns(cfg.alpns)
         .secret_key(cfg.secret_key)
-        .relay_mode(cfg.relay.into());
+        .relay_mode(
+            cfg.relay
+                .into(),
+        );
     if cfg.publish_addr {
         builder = builder.address_lookup(PkarrPublisher::n0_dns());
     }
@@ -44,5 +47,7 @@ pub async fn build_endpoint(cfg: EndpointConfig) -> anyhow::Result<Endpoint> {
     if let Some(addr) = cfg.magic_ipv6_addr {
         builder = builder.bind_addr(addr)?;
     }
-    Ok(builder.bind().await?)
+    Ok(builder
+        .bind()
+        .await?)
 }

@@ -100,7 +100,9 @@ pub fn load_last_tui_ticket() -> anyhow::Result<Option<EndpointTicket>> {
     }
 
     if let Ok(cwd) = std::env::current_dir() {
-        let local_ticket = cwd.join(".ll-serve-store").join("ticket");
+        let local_ticket = cwd
+            .join(".ll-serve-store")
+            .join("ticket");
         if local_ticket.exists() {
             if let Ok(content) = std::fs::read_to_string(&local_ticket) {
                 let trimmed = content.trim();
@@ -189,7 +191,9 @@ mod tests {
         let ticket = BlobTicket::new(addr, hash, iroh_blobs::BlobFormat::Raw);
 
         save_last_ll_ticket(&ticket).unwrap();
-        let loaded = load_last_ll_ticket().unwrap().unwrap();
+        let loaded = load_last_ll_ticket()
+            .unwrap()
+            .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
     }
 
@@ -205,17 +209,23 @@ mod tests {
         let ticket = EndpointTicket::new(addr);
 
         save_last_tui_ticket(&ticket).unwrap();
-        let loaded = load_last_tui_ticket().unwrap().unwrap();
+        let loaded = load_last_tui_ticket()
+            .unwrap()
+            .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
     }
 
     #[test]
     fn test_serve_ticket_and_secret_per_folder() {
         let folder_a = tempfile::tempdir().unwrap();
-        let store_a = folder_a.path().join(".ll-serve-store");
+        let store_a = folder_a
+            .path()
+            .join(".ll-serve-store");
 
         let folder_b = tempfile::tempdir().unwrap();
-        let store_b = folder_b.path().join(".ll-serve-store");
+        let store_b = folder_b
+            .path()
+            .join(".ll-serve-store");
 
         let (secret_a, gen_a) = get_or_create_serve_secret(&store_a).unwrap();
         assert!(gen_a);
@@ -236,11 +246,17 @@ mod tests {
         save_serve_ticket(&store_b, &ticket_b).unwrap();
 
         assert_eq!(
-            load_serve_ticket(&store_a).unwrap().unwrap().to_string(),
+            load_serve_ticket(&store_a)
+                .unwrap()
+                .unwrap()
+                .to_string(),
             ticket_a.to_string()
         );
         assert_eq!(
-            load_serve_ticket(&store_b).unwrap().unwrap().to_string(),
+            load_serve_ticket(&store_b)
+                .unwrap()
+                .unwrap()
+                .to_string(),
             ticket_b.to_string()
         );
     }
