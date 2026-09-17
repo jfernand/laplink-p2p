@@ -2,7 +2,7 @@
 name = "laplink-p2p"
 version = "0.27.0"
 edition = "2021"
-authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>", "n0 team"]
+authors = ["Javier Fernandez jfernand@me.com"]
 keywords = ["scp", "sftp", "network", "p2p", "holepunching"]
 categories = ["network-programming"]
 license = "Apache-2.0 OR MIT"
@@ -42,6 +42,7 @@ crossterm = { version = "0.29.0", features = [
   "event-stream",
   "osc52",
 ] }
+dirs = "7.0.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2.174", optional = true }

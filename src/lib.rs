@@ -12,6 +12,7 @@ pub mod paths;
 pub mod receive;
 pub mod secret;
 pub mod send;
+pub mod ticket_storage;
 pub mod transfer;
 
 pub use args::{apply_options, print_hash, AddrInfoOptions, Format, RelayModeOption};
