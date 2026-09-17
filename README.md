@@ -17,6 +17,8 @@ laplink-p2p works with 256 bit node ids and is, therefore, location transparent.
 ticket will remain valid if the IP address changes. Connections are encrypted
 using TLS.
 
+If you get the name of the project, hats off to you, good Sir.
+
 # Installation
 
 ```
