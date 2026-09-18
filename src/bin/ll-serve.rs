@@ -7,7 +7,14 @@ use std::{
 };
 
 use clap::Parser;
-use iroh_blobs::{store::fs::FsStore, ticket::BlobTicket, BlobFormat, BlobsProtocol};
+use iroh_blobs::{
+    provider::events::{
+        ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode, RequestUpdate,
+    },
+    store::fs::FsStore,
+    ticket::BlobTicket,
+    BlobFormat, BlobsProtocol,
+};
 use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
     endpoint::{build_endpoint, EndpointConfig},
@@ -145,7 +152,86 @@ async fn run() -> anyhow::Result<()> {
         (None, Some(entries_map))
     };
 
-    let blobs = BlobsProtocol::new(&store, None);
+    let (event_sender, mut event_rx) = EventSender::channel(
+        64,
+        EventMask {
+            connected: ConnectMode::Intercept,
+            get: RequestMode::InterceptLog,
+            ..EventMask::DEFAULT
+        },
+    );
+    let blobs = BlobsProtocol::new(&store, Some(event_sender));
+
+    let listing_protocol_for_events = listing_protocol.clone();
+    tokio::spawn(async move {
+        let mut connections: std::collections::HashMap<u64, Option<iroh::PublicKey>> =
+            std::collections::HashMap::new();
+        while let Some(item) = event_rx.recv().await {
+            match item {
+                ProviderMessage::ClientConnected(msg) => {
+                    let connection_id = msg.inner.connection_id;
+                    let node_id = msg.inner.endpoint_id;
+                    connections.insert(connection_id, node_id);
+                    msg.tx.send(Ok(())).await.ok();
+                }
+                ProviderMessage::ConnectionClosed(msg) => {
+                    let connection_id = msg.inner.connection_id;
+                    connections.remove(&connection_id);
+                }
+                ProviderMessage::GetRequestReceived(msg) => {
+                    let connection_id = msg.inner.connection_id;
+                    let hash = msg.inner.request.hash;
+                    let node_id = connections.get(&connection_id).copied().flatten();
+                    let client_label = match node_id {
+                        Some(id) => format!("client {id}"),
+                        None => format!("client conn-{connection_id}"),
+                    };
+
+                    let file_path = listing_protocol_for_events
+                        .listing()
+                        .entries
+                        .into_iter()
+                        .find(|e| e.hash == hash)
+                        .map(|e| e.path);
+
+                    let file_desc = match &file_path {
+                        Some(path) => format!("file \"{path}\" (hash {})", hash.fmt_short()),
+                        None => format!("blob {}", hash.fmt_short()),
+                    };
+
+                    let short_desc = match &file_path {
+                        Some(path) => format!("file \"{path}\""),
+                        None => format!("blob {}", hash.fmt_short()),
+                    };
+
+                    eprintln!("{client_label}: requested {file_desc}");
+                    tracing::info!(%hash, file = ?file_path, "{client_label}: requested {file_desc}");
+
+                    msg.tx.send(Ok(())).await.ok();
+
+                    let mut rx = msg.rx;
+                    tokio::spawn(async move {
+                        while let Ok(Some(update)) = rx.recv().await {
+                            match update {
+                                RequestUpdate::Completed(_) => {
+                                    eprintln!("{client_label}: completed download of {short_desc}");
+                                    tracing::info!("{client_label}: completed download of {short_desc}");
+                                    break;
+                                }
+                                RequestUpdate::Aborted(_) => {
+                                    eprintln!("{client_label}: download aborted for {short_desc}");
+                                    tracing::info!("{client_label}: download aborted for {short_desc}");
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    });
+                }
+                _ => {}
+            }
+        }
+    });
     let router = iroh::protocol::Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, blobs.clone())
         .accept(laplink_p2p::listing::ALPN, listing_protocol.clone())

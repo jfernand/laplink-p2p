@@ -153,6 +153,7 @@ impl ListingProtocol {
         &self,
         mut send: iroh::endpoint::SendStream,
         mut recv: iroh::endpoint::RecvStream,
+        node_id: iroh::PublicKey,
     ) -> anyhow::Result<()> {
         let req_bytes = recv
             .read_to_end(MAX_REQUEST_SIZE)
@@ -162,6 +163,17 @@ impl ListingProtocol {
         match req {
             ListRequest::V0 => {
                 let current_listing = self.listing();
+                eprintln!(
+                    "client {node_id}: requested listing snapshot ({} files)",
+                    current_listing
+                        .entries
+                        .len()
+                );
+                tracing::info!(
+                    %node_id,
+                    files = current_listing.entries.len(),
+                    "client requested listing snapshot"
+                );
                 let resp = ListResponse::V0(current_listing);
                 let resp_bytes = postcard::to_stdvec(&resp)?;
                 send.write_all(&resp_bytes)
@@ -174,6 +186,8 @@ impl ListingProtocol {
                 Ok(())
             }
             ListRequest::SubscribeV0 => {
+                eprintln!("client {node_id}: subscribed to live listing updates");
+                tracing::info!(%node_id, "client subscribed to live listing updates");
                 let mut rx = self.subscribe();
                 let initial = rx
                     .borrow_and_update()
@@ -190,6 +204,17 @@ impl ListingProtocol {
                                 break;
                             }
                             let new_listing = rx.borrow_and_update().clone();
+                            eprintln!(
+                                "client {node_id}: pushed listing update ({} files)",
+                                new_listing
+                                    .entries
+                                    .len()
+                            );
+                            tracing::info!(
+                                %node_id,
+                                files = new_listing.entries.len(),
+                                "pushed listing update to client"
+                            );
                             if let Err(e) = write_update_frame(&mut send, &ListingUpdate::V0(new_listing)).await {
                                 tracing::debug!("failed to send listing update frame: {e}");
                                 break;
@@ -200,6 +225,8 @@ impl ListingProtocol {
                         }
                     }
                 }
+                eprintln!("client {node_id}: unsubscribed from live listing updates");
+                tracing::info!(%node_id, "client unsubscribed from live listing updates");
                 send.finish()
                     .ok();
                 Ok(())
@@ -210,6 +237,7 @@ impl ListingProtocol {
 
 impl ProtocolHandler for ListingProtocol {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        let node_id = conn.remote_id();
         while let Ok((send, recv)) = conn
             .accept_bi()
             .await
@@ -217,7 +245,7 @@ impl ProtocolHandler for ListingProtocol {
             let this = self.clone();
             tokio::spawn(async move {
                 if let Err(e) = this
-                    .handle_stream(send, recv)
+                    .handle_stream(send, recv, node_id)
                     .await
                 {
                     tracing::debug!("listing stream error: {e}");
