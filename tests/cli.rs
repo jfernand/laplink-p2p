@@ -798,3 +798,135 @@ fn ll_serve_and_client_version_logging() {
         "expected ll-tui to output '{expected_tui_version}', got:\n{tui_stderr}"
     );
 }
+
+#[test]
+fn ll_tui_self_update_detection_and_apply() {
+    let folder = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+
+    // 1. Create a release archive matching the current platform target with version 99.0.0
+    let target = laplink_p2p::update::current_platform_target();
+    let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
+    let archive_path = folder.path().join(&archive_name);
+
+    {
+        let file = std::fs::File::create(&archive_path).unwrap();
+        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut tar = tar::Builder::new(enc);
+        for (name, content) in &[
+            ("ll", b"mock ll 99.0.0".as_slice()),
+            ("ll-serve", b"mock ll-serve 99.0.0".as_slice()),
+            ("ll-tui", b"mock ll-tui 99.0.0".as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            tar.append_data(&mut header, *name, *content).unwrap();
+        }
+        tar.into_inner().unwrap().finish().unwrap();
+    }
+
+    // 2. Start ll-serve on the directory
+    let mut child = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = child.stdout.take().unwrap();
+    let output = read_ascii_lines(3, &mut stdout).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    let ticket_str = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
+    let ticket = iroh_tickets::endpoint::EndpointTicket::from_str(ticket_str).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (secret_key, _) = laplink_p2p::get_or_create_secret().unwrap();
+        let lookup_by_dns = ticket.endpoint_addr().addrs.is_empty();
+        let endpoint = laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
+            secret_key: secret_key.clone(),
+            alpns: vec![],
+            relay: laplink_p2p::RelayModeOption::Default,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            publish_addr: false,
+            lookup_by_dns,
+        })
+        .await
+        .unwrap();
+
+        // 3. Fetch listing and detect update candidate
+        let listing = laplink_p2p::listing::fetch_listing(&endpoint, &ticket)
+            .await
+            .unwrap();
+
+        let candidate = laplink_p2p::update::find_available_update(&listing, env!("CARGO_PKG_VERSION"))
+            .expect("should find update candidate for v99.0.0");
+        assert_eq!(candidate.version, semver::Version::parse("99.0.0").unwrap());
+        assert_eq!(candidate.kind, laplink_p2p::update::AssetKind::Archive);
+        assert_eq!(candidate.entry.path, archive_name);
+
+        // 4. Download update blob to temporary staging path
+        let temp_staging_dir = tempfile::tempdir().unwrap();
+        let staged_path = temp_staging_dir.path().join(&archive_name);
+
+        let cfg = laplink_p2p::endpoint::EndpointConfig {
+            secret_key,
+            alpns: vec![],
+            relay: laplink_p2p::RelayModeOption::Default,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            publish_addr: false,
+            lookup_by_dns: false,
+        };
+        let store_dir = tempfile::tempdir().unwrap();
+
+        laplink_p2p::receive::receive_single(
+            candidate.entry.ticket.clone(),
+            cfg,
+            store_dir.path().to_path_buf(),
+            staged_path.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(staged_path.exists());
+
+        // 5. Apply the update to a mock install directory
+        let mock_install_dir = tempfile::tempdir().unwrap();
+        let replaced = laplink_p2p::update::apply_update_to_dir(
+            &staged_path,
+            &candidate,
+            mock_install_dir.path(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(replaced.len(), 3);
+        assert_eq!(
+            std::fs::read(mock_install_dir.path().join("ll")).unwrap(),
+            b"mock ll 99.0.0"
+        );
+        assert_eq!(
+            std::fs::read(mock_install_dir.path().join("ll-serve")).unwrap(),
+            b"mock ll-serve 99.0.0"
+        );
+        assert_eq!(
+            std::fs::read(mock_install_dir.path().join("ll-tui")).unwrap(),
+            b"mock ll-tui 99.0.0"
+        );
+
+        laplink_p2p::update::cleanup_staged_file(&staged_path);
+        assert!(!staged_path.exists());
+    });
+
+    child.kill().unwrap();
+    let _ = child.wait();
+}

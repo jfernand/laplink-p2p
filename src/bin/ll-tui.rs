@@ -18,6 +18,7 @@ use laplink_p2p::{
     endpoint::{build_endpoint, EndpointConfig},
     get_or_create_secret,
     listing::{fetch_listing, subscribe_listing, Entry, Listing},
+    update::{find_available_update, UpdateCandidate},
     RelayModeOption,
 };
 use n0_future::StreamExt;
@@ -101,7 +102,9 @@ fn build_rows(listing: &Listing) -> Vec<Row> {
 
 enum DownloadEvent {
     Progress(u64),
+    ApplyingUpdate,
     Done { path: PathBuf },
+    UpdateApplied { version: semver::Version },
     Error(String),
 }
 
@@ -115,10 +118,13 @@ struct App {
     status: String,
     downloading: bool,
     download_rx: Option<mpsc::Receiver<DownloadEvent>>,
+    available_update: Option<UpdateCandidate>,
+    updating: bool,
 }
 
 impl App {
     fn new(listing: Listing) -> Self {
+        let available_update = find_available_update(&listing, env!("CARGO_PKG_VERSION"));
         let rows = build_rows(&listing);
         let file_rows = rows
             .iter()
@@ -129,14 +135,21 @@ impl App {
             })
             .map(|(i, _)| i)
             .collect();
+        let status = if available_update.is_some() {
+            "Enter to download, u to update, q to quit".to_string()
+        } else {
+            "Enter to download, q to quit".to_string()
+        };
         Self {
             listing,
             rows,
             file_rows,
             selected: 0,
-            status: "Enter to download, q to quit".to_string(),
+            status,
             downloading: false,
             download_rx: None,
+            available_update,
+            updating: false,
         }
     }
 
@@ -179,6 +192,16 @@ impl App {
             });
 
         self.listing = new_listing;
+        if !self.updating {
+            self.available_update = find_available_update(&self.listing, env!("CARGO_PKG_VERSION"));
+            if !self.downloading {
+                if self.available_update.is_some() {
+                    self.status = "Enter to download, u to update, q to quit".to_string();
+                } else {
+                    self.status = "Enter to download, q to quit".to_string();
+                }
+            }
+        }
         self.rows = build_rows(&self.listing);
         self.file_rows = self
             .rows
@@ -301,7 +324,16 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         ])
         .split(f.area());
 
-    let header_text = match app.listing.server_version() {
+    let header_title = match &app.available_update {
+        Some(update) => format!(
+            "ll-tui v{}  [Update Available: v{} | Press 'u' to update]",
+            env!("CARGO_PKG_VERSION"),
+            update.version
+        ),
+        None => format!("ll-tui v{}", env!("CARGO_PKG_VERSION")),
+    };
+
+    let base_header_text = match app.listing.server_version() {
         Some(ver) => format!(
             "{} entries | server v{}",
             app.listing
@@ -316,11 +348,27 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
                 .len()
         ),
     };
-    let header = Paragraph::new(header_text).block(
+
+    let header_text = match &app.available_update {
+        Some(update) => format!(
+            "{base_header_text}  |  [Update Available: v{} | Press 'u' to update]",
+            update.version
+        ),
+        None => base_header_text,
+    };
+
+    let header_block = if app.available_update.is_some() {
         Block::default()
             .borders(Borders::ALL)
-            .title(format!("ll-tui v{}", env!("CARGO_PKG_VERSION"))),
-    );
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(header_title)
+    } else {
+        Block::default()
+            .borders(Borders::ALL)
+            .title(header_title)
+    };
+
+    let header = Paragraph::new(header_text).block(header_block);
     f.render_widget(header, chunks[0]);
 
     let items: Vec<ListItem> = app
@@ -441,7 +489,7 @@ async fn main() -> anyhow::Result<()> {
                             KeyCode::Char('q') | KeyCode::Esc => break,
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                             KeyCode::Down | KeyCode::Char('j') => app.move_down(),
-                            KeyCode::Enter if !app.downloading => {
+                            KeyCode::Enter if !app.downloading && !app.updating => {
                                 if let Some(entry) = app.selected_entry() {
                                     let entry = entry.clone();
                                     let export_path = laplink_p2p::paths::get_export_path(
@@ -490,6 +538,83 @@ async fn main() -> anyhow::Result<()> {
                                     });
                                 }
                             }
+                            KeyCode::Char('u') if !app.downloading && !app.updating => {
+                                if let Some(candidate) = app.available_update.clone() {
+                                    app.updating = true;
+                                    app.downloading = true;
+                                    app.status = format!("downloading update v{}...", candidate.version);
+
+                                    let cfg = EndpointConfig {
+                                        secret_key: secret_key.clone(),
+                                        alpns: vec![],
+                                        relay: args.relay.clone(),
+                                        magic_ipv4_addr: args.magic_ipv4_addr,
+                                        magic_ipv6_addr: args.magic_ipv6_addr,
+                                        publish_addr: false,
+                                        lookup_by_dns: false,
+                                    };
+                                    let store_dir = store_dir.clone();
+                                    let (tx, rx) = mpsc::channel(32);
+                                    app.download_rx = Some(rx);
+
+                                    tokio::spawn(async move {
+                                        let temp_dir = match tempfile::tempdir() {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                tx.send(DownloadEvent::Error(format!("failed to create temp dir: {e}"))).await.ok();
+                                                return;
+                                            }
+                                        };
+                                        let staged_path = temp_dir.path().join("update_staging.bin");
+
+                                        let (byte_tx, mut byte_rx) = mpsc::channel(32);
+                                        let progress_tx = tx.clone();
+                                        let fwd = tokio::spawn(async move {
+                                            while let Some(offset) = byte_rx.recv().await {
+                                                progress_tx.send(DownloadEvent::Progress(offset)).await.ok();
+                                            }
+                                        });
+
+                                        let download_res = laplink_p2p::receive::receive_single(
+                                            candidate.entry.ticket.clone(),
+                                            cfg,
+                                            store_dir,
+                                            staged_path.clone(),
+                                            Some(byte_tx),
+                                        )
+                                        .await;
+                                        fwd.await.ok();
+
+                                        match download_res {
+                                            Ok(_) => {
+                                                tx.send(DownloadEvent::ApplyingUpdate).await.ok();
+                                                match laplink_p2p::update::apply_update(&staged_path, &candidate) {
+                                                    Ok(_) => {
+                                                        laplink_p2p::update::cleanup_staged_file(&staged_path);
+                                                        tx.send(DownloadEvent::UpdateApplied {
+                                                            version: candidate.version,
+                                                        })
+                                                        .await
+                                                        .ok();
+                                                    }
+                                                    Err(e) => {
+                                                        laplink_p2p::update::cleanup_staged_file(&staged_path);
+                                                        tx.send(DownloadEvent::Error(format!("failed to apply update: {e}")))
+                                                            .await
+                                                            .ok();
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                laplink_p2p::update::cleanup_staged_file(&staged_path);
+                                                tx.send(DownloadEvent::Error(format!("failed to download update: {e}")))
+                                                    .await
+                                                    .ok();
+                                            }
+                                        }
+                                    });
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -505,16 +630,31 @@ async fn main() -> anyhow::Result<()> {
             ev = recv_download(&mut app.download_rx) => {
                 match ev {
                     Some(DownloadEvent::Progress(offset)) => {
-                        app.status = format!("downloading... {offset} bytes");
+                        if app.updating {
+                            app.status = format!("downloading update... {offset} bytes");
+                        } else {
+                            app.status = format!("downloading... {offset} bytes");
+                        }
+                    }
+                    Some(DownloadEvent::ApplyingUpdate) => {
+                        app.status = "applying update...".to_string();
                     }
                     Some(DownloadEvent::Done { path }) => {
                         app.status = format!("saved to {}", path.display());
                         app.downloading = false;
                         app.download_rx = None;
                     }
+                    Some(DownloadEvent::UpdateApplied { version }) => {
+                        app.status = format!("updated successfully to v{version}! Restart ll-tui to run new version.");
+                        app.downloading = false;
+                        app.updating = false;
+                        app.download_rx = None;
+                        app.available_update = None;
+                    }
                     Some(DownloadEvent::Error(e)) => {
                         app.status = format!("error: {e}");
                         app.downloading = false;
+                        app.updating = false;
                         app.download_rx = None;
                     }
                     None => {
@@ -834,5 +974,81 @@ mod tests {
             .shutdown()
             .await
             .ok();
+    }
+
+    #[test]
+    fn test_app_available_update_detection() {
+        let target = laplink_p2p::update::current_platform_target();
+        let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
+        let listing = Listing::new(vec![
+            make_test_entry("file.txt", 10, 1),
+            make_test_entry(&archive_name, 1024, 2),
+        ]);
+
+        let mut app = App::new(listing);
+        assert!(app.available_update.is_some());
+        let candidate = app.available_update.as_ref().unwrap();
+        assert_eq!(candidate.version, semver::Version::parse("99.0.0").unwrap());
+        assert!(app.status.contains("u to update"));
+
+        // When listing is updated to remove the update asset, available_update resets
+        let new_listing = Listing::new(vec![make_test_entry("file.txt", 10, 1)]);
+        app.update_listing(new_listing);
+        assert!(app.available_update.is_none());
+        assert_eq!(app.status, "Enter to download, q to quit");
+    }
+
+    #[test]
+    fn test_ui_renders_update_banner() {
+        use ratatui::backend::TestBackend;
+
+        let target = laplink_p2p::update::current_platform_target();
+        let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
+        let listing = Listing::new(vec![make_test_entry(&archive_name, 1024, 2)]);
+        let app = App::new(listing);
+        assert!(app.available_update.is_some());
+
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| ui(f, &app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let buffer_str: String = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+
+        assert!(buffer_str.contains("Update Available: v99.0.0"));
+        assert!(buffer_str.contains("Press 'u' to update"));
+    }
+
+    #[test]
+    fn test_update_event_state_transitions() {
+        let target = laplink_p2p::update::current_platform_target();
+        let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
+        let listing = Listing::new(vec![make_test_entry(&archive_name, 1024, 2)]);
+        let mut app = App::new(listing);
+        app.updating = true;
+        app.downloading = true;
+
+        // Applying update transition
+        app.status = "applying update...".to_string();
+        assert_eq!(app.status, "applying update...");
+
+        // UpdateApplied transition
+        let ver = semver::Version::parse("99.0.0").unwrap();
+        app.status = format!("updated successfully to v{ver}! Restart ll-tui to run new version.");
+        app.downloading = false;
+        app.updating = false;
+        app.available_update = None;
+
+        assert_eq!(
+            app.status,
+            "updated successfully to v99.0.0! Restart ll-tui to run new version."
+        );
+        assert!(!app.updating);
+        assert!(!app.downloading);
+        assert!(app.available_update.is_none());
     }
 }

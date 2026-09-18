@@ -78,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        name: [ubuntu-latest, ubuntu-arm-latest, macOS-arm-latest, macOS-latest, windows-latest]
+        name: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable]
         include:
           - name: ubuntu-arm-latest

@@ -15,6 +15,7 @@ pub mod secret;
 pub mod send;
 pub mod ticket_storage;
 pub mod transfer;
+pub mod update;
 
 pub use args::{apply_options, print_hash, AddrInfoOptions, Format, RelayModeOption};
 pub use secret::get_or_create_secret;

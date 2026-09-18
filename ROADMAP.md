@@ -52,18 +52,18 @@ When the served folder contents change, connected peers browsing the repository 
 
 ---
 
-## 4. Binary Auto-Updates in `ll-tui` via `ll-serve`
+## 4. Binary Auto-Updates in `ll-tui` via `ll-serve` (Implemented)
 
 ### Overview
-When serving a release or development directory that includes newer versions of `laplink-p2p` binaries (`ll`, `ll-tui`, `ll-serve`), `ll-tui` should be capable of detecting available updates, comparing executable versions, and performing an in-place auto-update.
+When serving a release or development directory that includes newer versions of `laplink-p2p` binaries (`ll`, `ll-tui`, `ll-serve`), `ll-tui` detects available updates, compares executable versions using semantic versioning, and performs an in-place atomic update upon user confirmation ('u' key).
 
 ### Objectives
-- Inspect served files for matching binary names corresponding to the current executable and platform (e.g. `ll-tui`, `ll`, or platform-specific archives/binaries).
-- Inspect and compare versions between the currently running binary (e.g. `env!("CARGO_PKG_VERSION")` / semantic versioning) and the binary offered by `ll-serve`.
-- Prompt the user in the TUI when a newer compatible version is detected.
-- Securely download and replace the running executable (or stage replacement on restart) following platform-specific binary replacement best practices.
+- Inspect served files for matching release archives (`ll-vX.Y.Z-{target}.tar.gz`/`.zip`) and standalone binaries matching the host platform architecture.
+- Compare candidate versions against the running application version (`env!("CARGO_PKG_VERSION")`) using semantic versioning, filtering for the newest compatible version.
+- Display an update prompt banner in `ll-tui` when a newer version is discovered.
+- Securely download the update blob over `iroh-blobs`, unpack multi-binary archives (`ll`, `ll-serve`, `ll-tui`), and atomically replace executables in-place via `self-replace`.
 
 ### Technical Considerations
-- **Version Discovery**: Support querying binary metadata/version via dedicated naming conventions (e.g. `ll-v0.28.4-linux-x86_64`), manifest files, or by inspecting headers.
-- **Platform Handling**: Safely handle executable replacement across target platforms (especially Windows where running executables are locked and require renaming/staging before replacement).
-- **Security & Integrity**: Verify blake3 hashes over `iroh-blobs` to ensure downloaded executables are complete and uncorrupted prior to replacement.
+- **Target & Version Discovery**: `src/update.rs` detects the host OS and architecture (`linux-x86_64`, `linux-aarch64`, `darwin-x86_64`, `darwin-aarch64`, `windows-x86_64`), matching release artifact patterns from the CI pipeline or standalone binaries.
+- **Cross-Platform In-Place Replacement**: Uses `self-replace` combined with atomic directory staging to replace the running executable without file locking issues across Linux, macOS, and Windows.
+- **Security & Content Integrity**: Downloads are verified end-to-end using `iroh-blobs` blake3 hashes prior to binary extraction and replacement.
