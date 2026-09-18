@@ -17,7 +17,7 @@ use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
     endpoint::{build_endpoint, EndpointConfig},
     get_or_create_secret,
-    listing::{fetch_listing, Entry, Listing},
+    listing::{fetch_listing, subscribe_listing, Entry, Listing},
     RelayModeOption,
 };
 use n0_future::StreamExt;
@@ -165,6 +165,68 @@ impl App {
             .entries
             .get(idx)
     }
+
+    fn update_listing(&mut self, new_listing: Listing) {
+        if self.listing == new_listing {
+            return;
+        }
+
+        let prev_selected_path = self
+            .selected_entry()
+            .map(|e| {
+                e.path
+                    .clone()
+            });
+
+        self.listing = new_listing;
+        self.rows = build_rows(&self.listing);
+        self.file_rows = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| {
+                r.entry
+                    .is_some()
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if self
+            .file_rows
+            .is_empty()
+        {
+            self.selected = 0;
+        } else if let Some(prev_path) = prev_selected_path {
+            let matching_idx = self
+                .file_rows
+                .iter()
+                .position(|&row_idx| {
+                    if let Some(entry_idx) = self.rows[row_idx].entry {
+                        self.listing
+                            .entries
+                            .get(entry_idx)
+                            .map(|e| e.path == prev_path)
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                });
+
+            if let Some(new_sel) = matching_idx {
+                self.selected = new_sel;
+            } else {
+                self.selected = self
+                    .selected
+                    .min(
+                        self.file_rows
+                            .len()
+                            - 1,
+                    );
+            }
+        } else {
+            self.selected = 0;
+        }
+    }
 }
 
 async fn recv_download(rx: &mut Option<mpsc::Receiver<DownloadEvent>>) -> Option<DownloadEvent> {
@@ -174,6 +236,35 @@ async fn recv_download(rx: &mut Option<mpsc::Receiver<DownloadEvent>>) -> Option
                 .await
         }
         None => std::future::pending().await,
+    }
+}
+
+async fn run_listing_watcher(
+    endpoint: iroh::Endpoint,
+    ticket: EndpointTicket,
+    listing_tx: mpsc::Sender<Listing>,
+) {
+    loop {
+        match subscribe_listing(&endpoint, &ticket).await {
+            Ok(mut stream) => {
+                while let Ok(Some(listing)) = stream
+                    .next()
+                    .await
+                {
+                    if listing_tx
+                        .send(listing)
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!("subscribe_listing failed: {e}");
+            }
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 }
 
@@ -305,6 +396,13 @@ async fn main() -> anyhow::Result<()> {
     let _guard = TerminalGuard;
     let mut events = EventStream::new();
 
+    let (listing_tx, mut listing_rx) = mpsc::channel(16);
+    let watch_endpoint = endpoint.clone();
+    let watch_ticket = ticket.clone();
+    let watcher_handle = tokio::spawn(async move {
+        run_listing_watcher(watch_endpoint, watch_ticket, listing_tx).await;
+    });
+
     loop {
         terminal.draw(|f| ui(f, &app))?;
         tokio::select! {
@@ -371,6 +469,11 @@ async fn main() -> anyhow::Result<()> {
                     _ => {}
                 }
             }
+            maybe_listing = listing_rx.recv() => {
+                if let Some(new_listing) = maybe_listing {
+                    app.update_listing(new_listing);
+                }
+            }
             ev = recv_download(&mut app.download_rx) => {
                 match ev {
                     Some(DownloadEvent::Progress(offset)) => {
@@ -394,9 +497,332 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    watcher_handle.abort();
     drop(terminal);
     tokio::fs::remove_dir_all(&store_dir)
         .await
         .ok();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+
+    use super::*;
+
+    fn make_test_entry(path: &str, size: u64, hash_byte: u8) -> Entry {
+        let ticket = BlobTicket::new(
+            iroh::EndpointAddr::from(iroh::SecretKey::generate().public()),
+            Hash::from_bytes([hash_byte; 32]),
+            BlobFormat::Raw,
+        );
+        Entry {
+            path: path.to_string(),
+            size,
+            hash: Hash::from_bytes([hash_byte; 32]),
+            ticket,
+        }
+    }
+
+    #[test]
+    fn test_app_new_and_navigation() {
+        let listing = Listing {
+            entries: vec![
+                make_test_entry("dir/b.txt", 10, 1),
+                make_test_entry("dir/a.txt", 20, 2),
+            ],
+        };
+        let mut app = App::new(listing);
+        assert_eq!(
+            app.file_rows
+                .len(),
+            2
+        );
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "dir/a.txt"
+        );
+
+        app.move_down();
+        assert_eq!(app.selected, 1);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "dir/b.txt"
+        );
+
+        app.move_down(); // shouldn't go past end
+        assert_eq!(app.selected, 1);
+
+        app.move_up();
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "dir/a.txt"
+        );
+
+        app.move_up(); // shouldn't go below 0
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn test_app_update_listing_preserves_selection() {
+        let listing1 = Listing {
+            entries: vec![
+                make_test_entry("b.txt", 10, 1),
+                make_test_entry("c.txt", 20, 2),
+            ],
+        };
+        let mut app = App::new(listing1);
+        app.move_down(); // select c.txt (selected = 1)
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "c.txt"
+        );
+
+        // Now a new file "a.txt" is added before b and c
+        let listing2 = Listing {
+            entries: vec![
+                make_test_entry("a.txt", 5, 0),
+                make_test_entry("b.txt", 10, 1),
+                make_test_entry("c.txt", 20, 2),
+            ],
+        };
+        app.update_listing(listing2);
+        // Selection should automatically shift to index 2 to still point to "c.txt"
+        assert_eq!(app.selected, 2);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "c.txt"
+        );
+    }
+
+    #[test]
+    fn test_app_update_listing_clamps_when_selected_deleted() {
+        let listing1 = Listing {
+            entries: vec![
+                make_test_entry("a.txt", 10, 1),
+                make_test_entry("b.txt", 20, 2),
+                make_test_entry("c.txt", 30, 3),
+            ],
+        };
+        let mut app = App::new(listing1);
+        app.move_down();
+        app.move_down(); // select c.txt (selected = 2)
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "c.txt"
+        );
+
+        // Now "c.txt" is deleted
+        let listing2 = Listing {
+            entries: vec![
+                make_test_entry("a.txt", 10, 1),
+                make_test_entry("b.txt", 20, 2),
+            ],
+        };
+        app.update_listing(listing2);
+        // Clamped to 1 (pointing to "b.txt")
+        assert_eq!(app.selected, 1);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "b.txt"
+        );
+    }
+
+    #[test]
+    fn test_app_update_listing_empty_handling() {
+        let mut app = App::new(Listing { entries: vec![] });
+        assert_eq!(
+            app.file_rows
+                .len(),
+            0
+        );
+        assert_eq!(app.selected, 0);
+        assert!(app
+            .selected_entry()
+            .is_none());
+
+        // File added
+        let listing1 = Listing {
+            entries: vec![make_test_entry("a.txt", 10, 1)],
+        };
+        app.update_listing(listing1);
+        assert_eq!(
+            app.file_rows
+                .len(),
+            1
+        );
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "a.txt"
+        );
+
+        // All files deleted
+        app.update_listing(Listing { entries: vec![] });
+        assert_eq!(
+            app.file_rows
+                .len(),
+            0
+        );
+        assert_eq!(app.selected, 0);
+        assert!(app
+            .selected_entry()
+            .is_none());
+    }
+
+    #[test]
+    fn test_app_update_listing_content_change_updates_ticket() {
+        let listing1 = Listing {
+            entries: vec![make_test_entry("a.txt", 10, 1)],
+        };
+        let mut app = App::new(listing1);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .size,
+            10
+        );
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .hash,
+            Hash::from_bytes([1u8; 32])
+        );
+
+        // File modified with new size and hash
+        let listing2 = Listing {
+            entries: vec![make_test_entry("a.txt", 50, 2)],
+        };
+        app.update_listing(listing2);
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "a.txt"
+        );
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .size,
+            50
+        );
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .hash,
+            Hash::from_bytes([2u8; 32])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_live_listing_watcher_integration() {
+        let secret1 = iroh::SecretKey::generate();
+        let initial_listing = Listing {
+            entries: vec![make_test_entry("first.txt", 10, 1)],
+        };
+        let listing_proto = laplink_p2p::listing::ListingProtocol::new(initial_listing.clone());
+
+        let server_endpoint = build_endpoint(EndpointConfig {
+            secret_key: secret1,
+            alpns: vec![laplink_p2p::listing::ALPN.to_vec()],
+            relay: RelayModeOption::Disabled,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            publish_addr: false,
+            lookup_by_dns: false,
+        })
+        .await
+        .unwrap();
+
+        let router = iroh::protocol::Router::builder(server_endpoint.clone())
+            .accept(laplink_p2p::listing::ALPN, listing_proto.clone())
+            .spawn();
+
+        let ticket = EndpointTicket::new(server_endpoint.addr());
+
+        let client_secret = iroh::SecretKey::generate();
+        let client_endpoint = build_endpoint(EndpointConfig {
+            secret_key: client_secret,
+            alpns: vec![],
+            relay: RelayModeOption::Disabled,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            publish_addr: false,
+            lookup_by_dns: false,
+        })
+        .await
+        .unwrap();
+
+        let (listing_tx, mut listing_rx) = mpsc::channel(16);
+        let watcher_task = tokio::spawn(run_listing_watcher(client_endpoint, ticket, listing_tx));
+
+        // 1. Initial listing received via stream
+        let initial = tokio::time::timeout(std::time::Duration::from_secs(5), listing_rx.recv())
+            .await
+            .expect("timeout waiting for initial listing")
+            .expect("channel closed");
+        assert_eq!(initial, initial_listing);
+
+        let mut app = App::new(initial);
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "first.txt"
+        );
+
+        // 2. Server updates listing
+        let updated_listing = Listing {
+            entries: vec![
+                make_test_entry("first.txt", 10, 1),
+                make_test_entry("second.txt", 20, 2),
+            ],
+        };
+        listing_proto.update(updated_listing.clone());
+
+        let update = tokio::time::timeout(std::time::Duration::from_secs(5), listing_rx.recv())
+            .await
+            .expect("timeout waiting for updated listing")
+            .expect("channel closed");
+        assert_eq!(update, updated_listing);
+
+        app.update_listing(update);
+        assert_eq!(
+            app.file_rows
+                .len(),
+            2
+        );
+        assert_eq!(
+            app.selected_entry()
+                .unwrap()
+                .path,
+            "first.txt"
+        );
+
+        watcher_task.abort();
+        router
+            .shutdown()
+            .await
+            .ok();
+    }
 }

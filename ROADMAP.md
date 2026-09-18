@@ -36,19 +36,19 @@ When the served folder contents change, connected peers browsing the repository 
 
 ---
 
-## 3. Real-Time Listing Updates in `ll-tui`
+## 3. Real-Time Listing Updates in `ll-tui` (Implemented)
 
 ### Overview
-`ll-tui` should maintain a live view of the served folder, updating the displayed file list when notifications are received from `ll-serve`.
+`ll-tui` maintains a live view of the served folder, updating the displayed file list when notifications are received from `ll-serve` over the live subscription stream.
 
 ### Objectives
 - Listen for peer notifications broadcast by `ll-serve` via the background event loop.
-- Automatically fetch the updated `Listing` upon receiving an update signal.
+- Automatically receive and update the `Listing` over the persistent QUIC subscription stream.
 - Re-render the file tree seamlessly without disrupting ongoing downloads, navigation focus, or selection state whenever possible.
 
 ### Technical Considerations
-- **UI State Preservation**: Reconcile the new listing with the existing file tree hierarchy so that current row selection, expanded folder states, or active scroll positions remain intuitive to the user.
-- **Non-blocking Event Stream**: Integrate gossip/change notifications into the existing `tokio::select!` event loop in `src/bin/ll-tui.rs` alongside terminal input and download progress events.
+- **UI State Preservation**: Reconciles the new listing with the existing file tree hierarchy so that current row selection persists on the same file path (or clamps gracefully on deletion).
+- **Non-blocking Event Stream**: Integrates subscription updates into the existing `tokio::select!` event loop in `src/bin/ll-tui.rs` alongside terminal input and download progress events without blocking or stalling transfers.
 
 ---
 
