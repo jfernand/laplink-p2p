@@ -20,19 +20,19 @@ This document outlines planned capabilities, architecture, and feature designs f
 
 ---
 
-## 2. Peer Change Notifications via Gossip
+## 2. Peer Change Notifications via Subscription Stream (Implemented)
 
 ### Overview
-When the served folder contents change, connected peers browsing the repository should be notified (e.g. via an `iroh-gossip` topic or lightweight message stream) rather than having to poll or manually reconnect.
+When the served folder contents change, connected peers browsing the repository are notified immediately over a persistent QUIC subscription stream rather than having to poll or manually reconnect.
 
 ### Objectives
 - Establish a lightweight publish/subscribe notification channel between `ll-serve` and clients (`ll-tui`).
 - Broadcast listing update events when filesystem changes are committed.
 
 ### Technical Considerations
-- **Gossip Protocol**: Leverage `iroh-gossip` or an ALPN-based notification stream to broadcast lightweight change signals (e.g., sequence numbers or listing hashes) across peers.
-- **Topic Association**: Derive gossip topics deterministically from the served folder's ticket or public key so only interested peers receive events.
-- **Debounced Broadcasts**: Avoid flooding peers with rapid-fire notification messages during bursty filesystem writes.
+- **Subscription Protocol**: An ALPN-based protocol stream (`iroh-file-server/list/0`) over QUIC with length-prefixed framing and version-tagged messages (`ListRequest::SubscribeV0` and `ListingUpdate::V0`).
+- **Direct Pushed Listings**: Server sends the initial listing snapshot upon subscription, and pushes updated listings immediately as filesystem changes are detected by the file monitor.
+- **Multiplexing & Lifecycle**: Uses native QUIC streams multiplexed over the server connection, with automatic cleanup when peers disconnect.
 
 ---
 

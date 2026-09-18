@@ -590,3 +590,115 @@ fn ll_serve_filesystem_monitoring() {
         .unwrap();
     let _ = child.wait();
 }
+
+#[test]
+fn ll_serve_subscription_stream() {
+    let folder = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    let file1 = folder
+        .path()
+        .join("file1.txt");
+    std::fs::write(&file1, b"first file content").unwrap();
+
+    let mut child = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .unwrap();
+    let output = read_ascii_lines(3, &mut stdout).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    let ticket_str = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
+    let ticket = iroh_tickets::endpoint::EndpointTicket::from_str(ticket_str).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (secret_key, _) = laplink_p2p::get_or_create_secret().unwrap();
+        let lookup_by_dns = ticket
+            .endpoint_addr()
+            .addrs
+            .is_empty();
+        let endpoint =
+            laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
+                secret_key,
+                alpns: vec![],
+                relay: laplink_p2p::RelayModeOption::Default,
+                magic_ipv4_addr: None,
+                magic_ipv6_addr: None,
+                publish_addr: false,
+                lookup_by_dns,
+            })
+            .await
+            .unwrap();
+
+        // 1. Subscribe to listing updates
+        let mut stream = laplink_p2p::listing::subscribe_listing(&endpoint, &ticket)
+            .await
+            .unwrap();
+
+        // 2. Initial listing snapshot pushed immediately
+        let initial = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+            .await
+            .expect("timeout waiting for initial listing")
+            .unwrap()
+            .expect("stream should not be closed");
+        assert_eq!(
+            initial
+                .entries
+                .len(),
+            1
+        );
+        assert_eq!(initial.entries[0].path, "file1.txt");
+
+        // 3. Create a second file on the filesystem
+        let file2 = folder
+            .path()
+            .join("file2.txt");
+        std::fs::write(&file2, b"second file content").unwrap();
+
+        // 4. Expect update pushed over the subscription stream
+        let update1 = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+            .await
+            .expect("timeout waiting for update after file addition")
+            .unwrap()
+            .expect("stream should not be closed");
+        assert_eq!(
+            update1
+                .entries
+                .len(),
+            2
+        );
+        assert_eq!(update1.entries[0].path, "file1.txt");
+        assert_eq!(update1.entries[1].path, "file2.txt");
+
+        // 5. Delete file1 on the filesystem
+        std::fs::remove_file(&file1).unwrap();
+
+        // 6. Expect update pushed over the subscription stream
+        let update2 = tokio::time::timeout(std::time::Duration::from_secs(5), stream.next())
+            .await
+            .expect("timeout waiting for update after file deletion")
+            .unwrap()
+            .expect("stream should not be closed");
+        assert_eq!(
+            update2
+                .entries
+                .len(),
+            1
+        );
+        assert_eq!(update2.entries[0].path, "file2.txt");
+    });
+
+    child
+        .kill()
+        .unwrap();
+    let _ = child.wait();
+}
