@@ -50,6 +50,8 @@ fn qr_to_braille(text: &str, invert: bool) -> String {
     output
 }
 
+
+
 #[cfg(test)]
 mod tests {
     use crate::qr::qr_to_braille;
