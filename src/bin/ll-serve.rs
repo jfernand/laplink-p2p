@@ -75,6 +75,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run() -> anyhow::Result<()> {
+    let version = env!("CARGO_PKG_VERSION");
+    eprintln!("ll-serve version: {version}");
+    tracing::info!(%version, "ll-serve version: {version}");
     let args = ServeArgs::parse();
     let folder = args
         .folder
@@ -128,7 +131,7 @@ async fn run() -> anyhow::Result<()> {
         a.path
             .cmp(&b.path)
     });
-    let listing = Listing::new(entries);
+    let listing = Listing::new(entries).with_server_version(version);
 
     let listing_protocol = ListingProtocol::new(listing.clone());
 
