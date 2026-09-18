@@ -73,10 +73,6 @@ async fn run() -> anyhow::Result<()> {
         .unwrap_or_else(|| folder.join(".ll-serve-store"));
     tokio::fs::create_dir_all(&store_dir).await?;
 
-    if let Some(t) = &args.ticket {
-        laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, t)?;
-    }
-
     let (secret_key, generated) =
         laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir)?;
     if (generated && args.verbose > 0) || args.show_secret {
@@ -134,12 +130,24 @@ async fn run() -> anyhow::Result<()> {
         .online()
         .await;
 
-    let ticket = EndpointTicket::new(
-        router
-            .endpoint()
-            .addr(),
-    );
-    laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket)?;
+    let ticket = match args.ticket {
+        Some(ticket) => {
+            laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket)?;
+            ticket
+        }
+        None => match laplink_p2p::ticket_storage::load_serve_ticket(&store_dir)? {
+            Some(ticket) => ticket,
+            None => {
+                let ticket = EndpointTicket::new(
+                    router
+                        .endpoint()
+                        .addr(),
+                );
+                laplink_p2p::ticket_storage::save_serve_ticket(&store_dir, &ticket)?;
+                ticket
+            }
+        },
+    };
     println!(
         "serving {} ({} files)",
         folder.display(),

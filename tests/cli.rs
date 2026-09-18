@@ -295,17 +295,107 @@ fn ll_tui_remembers_ticket() {
 }
 
 #[test]
-fn ll_serve_remembers_ticket_arg() {
+fn ll_serve_remembers_ticket() {
     let folder = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
-    let output = duct::cmd(ll_serve_bin(), ["--help"])
-        .dir(folder.path())
+    let store_dir = folder
+        .path()
+        .join(".ll-serve-store");
+
+    // 1. First run of ll-serve on the folder: ticket is generated and persisted.
+    let mut child1 = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
         .env("LAPLINK_CONFIG_DIR", config_dir.path())
-        .run()
+        .stdout(std::process::Stdio::piped())
+        .spawn()
         .unwrap();
-    assert!(output
-        .status
-        .success());
+
+    let mut stdout1 = child1
+        .stdout
+        .take()
+        .unwrap();
+    let output1 = read_ascii_lines(3, &mut stdout1).unwrap();
+    let output1 = String::from_utf8(output1).unwrap();
+    let ticket1 = output1
+        .split_ascii_whitespace()
+        .last()
+        .unwrap()
+        .to_string();
+
+    child1
+        .kill()
+        .unwrap();
+    let _ = child1.wait();
+
+    // Verify it was saved in store_dir/ticket
+    let loaded1 = laplink_p2p::ticket_storage::load_serve_ticket(&store_dir)
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded1.to_string(), ticket1);
+
+    // 2. Restart ll-serve on the same folder: ticket should be identical and stable.
+    let mut child2 = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout2 = child2
+        .stdout
+        .take()
+        .unwrap();
+    let output2 = read_ascii_lines(3, &mut stdout2).unwrap();
+    let output2 = String::from_utf8(output2).unwrap();
+    let ticket2 = output2
+        .split_ascii_whitespace()
+        .last()
+        .unwrap()
+        .to_string();
+
+    child2
+        .kill()
+        .unwrap();
+    let _ = child2.wait();
+
+    assert_eq!(ticket1, ticket2);
+
+    // 3. Start with explicit --ticket argument: overrides/remembers that ticket.
+    let explicit_key = iroh::SecretKey::generate();
+    let explicit_addr = iroh::EndpointAddr::from(explicit_key.public());
+    let explicit_ticket = iroh_tickets::endpoint::EndpointTicket::new(explicit_addr);
+
+    let mut child3 = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .arg("--ticket")
+        .arg(explicit_ticket.to_string())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout3 = child3
+        .stdout
+        .take()
+        .unwrap();
+    let output3 = read_ascii_lines(3, &mut stdout3).unwrap();
+    let output3 = String::from_utf8(output3).unwrap();
+    let ticket3 = output3
+        .split_ascii_whitespace()
+        .last()
+        .unwrap()
+        .to_string();
+
+    child3
+        .kill()
+        .unwrap();
+    let _ = child3.wait();
+
+    assert_eq!(ticket3, explicit_ticket.to_string());
+    let loaded3 = laplink_p2p::ticket_storage::load_serve_ticket(&store_dir)
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded3.to_string(), explicit_ticket.to_string());
 }
 
 #[test]
