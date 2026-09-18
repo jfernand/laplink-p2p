@@ -251,6 +251,13 @@ async fn run_listing_watcher(
                     .next()
                     .await
                 {
+                    if let Some(server_ver) = listing.server_version() {
+                        tracing::debug!(
+                            server_version = %server_ver,
+                            client_version = env!("CARGO_PKG_VERSION"),
+                            "received live listing update"
+                        );
+                    }
                     if listing_tx
                         .send(listing)
                         .await
@@ -294,16 +301,25 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         ])
         .split(f.area());
 
-    let header = Paragraph::new(format!(
-        "{} entries",
-        app.listing
-            .entries
-            .len()
-    ))
-    .block(
+    let header_text = match app.listing.server_version() {
+        Some(ver) => format!(
+            "{} entries | server v{}",
+            app.listing
+                .entries
+                .len(),
+            ver
+        ),
+        None => format!(
+            "{} entries",
+            app.listing
+                .entries
+                .len()
+        ),
+    };
+    let header = Paragraph::new(header_text).block(
         Block::default()
             .borders(Borders::ALL)
-            .title("ll-tui"),
+            .title(format!("ll-tui v{}", env!("CARGO_PKG_VERSION"))),
     );
     f.render_widget(header, chunks[0]);
 
@@ -357,6 +373,9 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let client_version = env!("CARGO_PKG_VERSION");
+    eprintln!("ll-tui version: {client_version}");
+    tracing::info!(%client_version, "ll-tui version: {client_version}");
     let args = TuiArgs::parse();
     let ticket = match args.ticket {
         Some(ticket) => {
@@ -388,6 +407,15 @@ async fn main() -> anyhow::Result<()> {
 
     eprintln!("fetching listing...");
     let listing = fetch_listing(&endpoint, &ticket).await?;
+    let server_version = listing
+        .server_version()
+        .unwrap_or("unknown");
+    eprintln!("server version: {server_version}");
+    tracing::info!(
+        %server_version,
+        %client_version,
+        "connected to server"
+    );
     let mut app = App::new(listing);
 
     let store_dir = std::env::current_dir()?.join(".ll-tui-store");
