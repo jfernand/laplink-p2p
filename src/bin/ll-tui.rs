@@ -763,7 +763,8 @@ mod tests {
             .await
             .expect("timeout waiting for initial listing")
             .expect("channel closed");
-        assert_eq!(initial, initial_listing);
+        assert_eq!(initial.entries, initial_listing.entries);
+        assert_eq!(initial.server_version(), Some(env!("CARGO_PKG_VERSION")));
 
         let mut app = App::new(initial);
         assert_eq!(
@@ -784,7 +785,8 @@ mod tests {
             .await
             .expect("timeout waiting for updated listing")
             .expect("channel closed");
-        assert_eq!(update, updated_listing);
+        assert_eq!(update.entries, updated_listing.entries);
+        assert_eq!(update.server_version(), Some(env!("CARGO_PKG_VERSION")));
 
         app.update_listing(update);
         assert_eq!(

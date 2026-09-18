@@ -39,14 +39,32 @@ pub struct Entry {
 }
 
 /// A full directory listing, returned in response to a listing request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Listing {
     pub entries: Vec<Entry>,
+    #[serde(default)]
+    pub server_version: Option<String>,
 }
 
 impl Listing {
     pub fn new(entries: Vec<Entry>) -> Self {
-        Self { entries }
+        Self {
+            entries,
+            server_version: None,
+        }
+    }
+
+    pub fn with_server_version(mut self, version: impl Into<String>) -> Self {
+        self.server_version = Some(version.into());
+        self
+    }
+
+    pub fn server_version(&self) -> Option<&str> {
+        self.server_version.as_deref()
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.server_version.as_deref()
     }
 }
 
@@ -116,21 +134,46 @@ pub async fn read_update_frame<R: tokio::io::AsyncRead + Unpin>(
 /// Server-side handler for the listing protocol.
 #[derive(Debug, Clone)]
 pub struct ListingProtocol {
+    server_version: String,
     update_tx: Arc<watch::Sender<Listing>>,
     update_rx: watch::Receiver<Listing>,
 }
 
 impl ListingProtocol {
-    pub fn new(listing: Listing) -> Self {
+    pub fn new(mut listing: Listing) -> Self {
+        let server_version = listing
+            .server_version
+            .clone()
+            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+        listing.server_version = Some(server_version.clone());
         let (update_tx, update_rx) = watch::channel(listing);
         Self {
+            server_version,
             update_tx: Arc::new(update_tx),
             update_rx,
         }
     }
 
+    pub fn new_with_version(mut listing: Listing, server_version: impl Into<String>) -> Self {
+        let server_version = server_version.into();
+        listing.server_version = Some(server_version.clone());
+        let (update_tx, update_rx) = watch::channel(listing);
+        Self {
+            server_version,
+            update_tx: Arc::new(update_tx),
+            update_rx,
+        }
+    }
+
+    pub fn server_version(&self) -> &str {
+        &self.server_version
+    }
+
     /// Update the current active listing and notify all subscribers.
-    pub fn update(&self, new_listing: Listing) {
+    pub fn update(&self, mut new_listing: Listing) {
+        if new_listing.server_version.is_none() {
+            new_listing.server_version = Some(self.server_version.clone());
+        }
         let _ = self
             .update_tx
             .send(new_listing);
@@ -163,8 +206,9 @@ impl ListingProtocol {
         match req {
             ListRequest::V0 => {
                 let current_listing = self.listing();
+                let server_ver = self.server_version();
                 eprintln!(
-                    "client {node_id}: requested listing snapshot ({} files)",
+                    "client {node_id}: requested listing snapshot ({} files, server version {server_ver})",
                     current_listing
                         .entries
                         .len()
@@ -172,6 +216,7 @@ impl ListingProtocol {
                 tracing::info!(
                     %node_id,
                     files = current_listing.entries.len(),
+                    server_version = server_ver,
                     "client requested listing snapshot"
                 );
                 let resp = ListResponse::V0(current_listing);
@@ -186,8 +231,15 @@ impl ListingProtocol {
                 Ok(())
             }
             ListRequest::SubscribeV0 => {
-                eprintln!("client {node_id}: subscribed to live listing updates");
-                tracing::info!(%node_id, "client subscribed to live listing updates");
+                let server_ver = self.server_version();
+                eprintln!(
+                    "client {node_id}: subscribed to live listing updates (server version {server_ver})"
+                );
+                tracing::info!(
+                    %node_id,
+                    server_version = server_ver,
+                    "client subscribed to live listing updates"
+                );
                 let mut rx = self.subscribe();
                 let initial = rx
                     .borrow_and_update()
@@ -272,7 +324,18 @@ impl ListingStream {
     /// closed the stream.
     pub async fn next(&mut self) -> anyhow::Result<Option<Listing>> {
         match read_update_frame(&mut self.recv).await? {
-            Some(ListingUpdate::V0(listing)) => Ok(Some(listing)),
+            Some(ListingUpdate::V0(listing)) => {
+                let client_version = env!("CARGO_PKG_VERSION");
+                let server_version = listing
+                    .server_version()
+                    .unwrap_or("unknown");
+                tracing::debug!(
+                    %server_version,
+                    %client_version,
+                    "received listing update from server"
+                );
+                Ok(Some(listing))
+            }
             None => Ok(None),
         }
     }
@@ -313,6 +376,15 @@ pub async fn fetch_listing(
         .read_to_end(MAX_LISTING_SIZE)
         .await?;
     let ListResponse::V0(listing) = postcard::from_bytes(&resp_bytes)?;
+    let client_version = env!("CARGO_PKG_VERSION");
+    let server_version = listing
+        .server_version()
+        .unwrap_or("unknown");
+    tracing::info!(
+        %server_version,
+        %client_version,
+        "fetched listing from server"
+    );
     Ok(listing)
 }
 
@@ -407,7 +479,7 @@ mod tests {
         .unwrap();
 
         let initial_listing = Listing::new(vec![]);
-        let protocol = ListingProtocol::new(initial_listing);
+        let protocol = ListingProtocol::new_with_version(initial_listing, "1.2.3");
 
         let router = iroh::protocol::Router::builder(server_endpoint.clone())
             .accept(ALPN, protocol.clone())
@@ -442,6 +514,7 @@ mod tests {
                 .len(),
             0
         );
+        assert_eq!(snapshot.server_version(), Some("1.2.3"));
 
         // 2. Subscribe to listing updates
         let mut stream = subscribe_listing(&client_endpoint, &ticket)
@@ -460,6 +533,7 @@ mod tests {
                 .len(),
             0
         );
+        assert_eq!(first.server_version(), Some("1.2.3"));
 
         // Server pushes update 1
         let dummy_ticket = BlobTicket::new(
@@ -489,6 +563,7 @@ mod tests {
             1
         );
         assert_eq!(update1.entries[0].path, "alpha.txt");
+        assert_eq!(update1.server_version(), Some("1.2.3"));
 
         // Server pushes update 2
         let entry2 = Entry {
@@ -511,6 +586,7 @@ mod tests {
             2
         );
         assert_eq!(update2.entries[1].path, "beta.txt");
+        assert_eq!(update2.server_version(), Some("1.2.3"));
 
         router
             .shutdown()
