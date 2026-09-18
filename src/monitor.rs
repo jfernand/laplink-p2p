@@ -127,11 +127,20 @@ async fn import_and_update(
     match import_one(store, path.to_path_buf()).await {
         Ok((tag, size)) => {
             let hash = tag.hash();
-            let needs_update = match entries_map.get(&rel_name) {
+            let is_existing = entries_map.get(&rel_name);
+            let needs_update = match is_existing {
                 Some((existing, _)) => existing.hash != hash || existing.size != size,
                 None => true,
             };
             if needs_update {
+                let is_new = is_existing.is_none();
+                if is_new {
+                    eprintln!("file added: {rel_name}");
+                    tracing::info!(file = %rel_name, "file added");
+                } else {
+                    eprintln!("file modified: {rel_name}");
+                    tracing::info!(file = %rel_name, "file modified");
+                }
                 let ticket = BlobTicket::new(addr.clone(), hash, BlobFormat::Raw);
                 let entry = Entry {
                     path: rel_name.clone(),
@@ -227,12 +236,20 @@ pub async fn process_paths(
                     .remove(&rel_name)
                     .is_some()
                 {
+                    eprintln!("file removed: {rel_name}");
+                    tracing::info!(file = %rel_name, "file removed");
                     changed = true;
                 }
                 let dir_prefix = format!("{rel_name}/");
-                let before_len = entries_map.len();
-                entries_map.retain(|k, _| !k.starts_with(&dir_prefix));
-                if entries_map.len() != before_len {
+                let removed_keys: Vec<String> = entries_map
+                    .keys()
+                    .filter(|k| k.starts_with(&dir_prefix))
+                    .cloned()
+                    .collect();
+                for k in removed_keys {
+                    entries_map.remove(&k);
+                    eprintln!("file removed: {k}");
+                    tracing::info!(file = %k, "file removed");
                     changed = true;
                 }
             }
@@ -256,6 +273,10 @@ pub async fn process_paths(
             new_listing
                 .entries
                 .len()
+        );
+        tracing::info!(
+            files = new_listing.entries.len(),
+            "filesystem change detected: updated listing"
         );
     }
 
