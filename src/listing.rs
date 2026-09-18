@@ -44,6 +44,12 @@ pub struct Listing {
     pub entries: Vec<Entry>,
 }
 
+impl Listing {
+    pub fn new(entries: Vec<Entry>) -> Self {
+        Self { entries }
+    }
+}
+
 /// Wire request, version-tagged so the protocol can evolve without an outright wire break.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ListRequest {
@@ -327,12 +333,8 @@ mod tests {
             hash: Hash::from_bytes([1u8; 32]),
             ticket,
         };
-        let listing1 = Listing {
-            entries: vec![entry.clone()],
-        };
-        let listing2 = Listing {
-            entries: vec![entry.clone(), entry],
-        };
+        let listing1 = Listing::new(vec![entry.clone()]);
+        let listing2 = Listing::new(vec![entry.clone(), entry]);
 
         let mut buf = Vec::new();
         write_update_frame(&mut buf, &ListingUpdate::V0(listing1.clone()))
@@ -376,7 +378,7 @@ mod tests {
         .await
         .unwrap();
 
-        let initial_listing = Listing { entries: vec![] };
+        let initial_listing = Listing::new(vec![]);
         let protocol = ListingProtocol::new(initial_listing);
 
         let router = iroh::protocol::Router::builder(server_endpoint.clone())
@@ -445,9 +447,7 @@ mod tests {
             hash: Hash::from_bytes([2u8; 32]),
             ticket: dummy_ticket.clone(),
         };
-        protocol.update(Listing {
-            entries: vec![entry1.clone()],
-        });
+        protocol.update(Listing::new(vec![entry1.clone()]));
 
         let update1 = stream
             .next()
@@ -469,9 +469,7 @@ mod tests {
             hash: Hash::from_bytes([3u8; 32]),
             ticket: dummy_ticket,
         };
-        protocol.update(Listing {
-            entries: vec![entry1, entry2],
-        });
+        protocol.update(Listing::new(vec![entry1, entry2]));
 
         let update2 = stream
             .next()

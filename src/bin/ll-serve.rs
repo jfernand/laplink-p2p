@@ -121,7 +121,7 @@ async fn run() -> anyhow::Result<()> {
         a.path
             .cmp(&b.path)
     });
-    let listing = Listing { entries };
+    let listing = Listing::new(entries);
 
     let listing_protocol = ListingProtocol::new(listing.clone());
 

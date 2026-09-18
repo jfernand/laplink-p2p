@@ -527,12 +527,10 @@ mod tests {
 
     #[test]
     fn test_app_new_and_navigation() {
-        let listing = Listing {
-            entries: vec![
-                make_test_entry("dir/b.txt", 10, 1),
-                make_test_entry("dir/a.txt", 20, 2),
-            ],
-        };
+        let listing = Listing::new(vec![
+            make_test_entry("dir/b.txt", 10, 1),
+            make_test_entry("dir/a.txt", 20, 2),
+        ]);
         let mut app = App::new(listing);
         assert_eq!(
             app.file_rows
@@ -574,12 +572,10 @@ mod tests {
 
     #[test]
     fn test_app_update_listing_preserves_selection() {
-        let listing1 = Listing {
-            entries: vec![
-                make_test_entry("b.txt", 10, 1),
-                make_test_entry("c.txt", 20, 2),
-            ],
-        };
+        let listing1 = Listing::new(vec![
+            make_test_entry("b.txt", 10, 1),
+            make_test_entry("c.txt", 20, 2),
+        ]);
         let mut app = App::new(listing1);
         app.move_down(); // select c.txt (selected = 1)
         assert_eq!(
@@ -590,13 +586,11 @@ mod tests {
         );
 
         // Now a new file "a.txt" is added before b and c
-        let listing2 = Listing {
-            entries: vec![
-                make_test_entry("a.txt", 5, 0),
-                make_test_entry("b.txt", 10, 1),
-                make_test_entry("c.txt", 20, 2),
-            ],
-        };
+        let listing2 = Listing::new(vec![
+            make_test_entry("a.txt", 5, 0),
+            make_test_entry("b.txt", 10, 1),
+            make_test_entry("c.txt", 20, 2),
+        ]);
         app.update_listing(listing2);
         // Selection should automatically shift to index 2 to still point to "c.txt"
         assert_eq!(app.selected, 2);
@@ -610,13 +604,11 @@ mod tests {
 
     #[test]
     fn test_app_update_listing_clamps_when_selected_deleted() {
-        let listing1 = Listing {
-            entries: vec![
-                make_test_entry("a.txt", 10, 1),
-                make_test_entry("b.txt", 20, 2),
-                make_test_entry("c.txt", 30, 3),
-            ],
-        };
+        let listing1 = Listing::new(vec![
+            make_test_entry("a.txt", 10, 1),
+            make_test_entry("b.txt", 20, 2),
+            make_test_entry("c.txt", 30, 3),
+        ]);
         let mut app = App::new(listing1);
         app.move_down();
         app.move_down(); // select c.txt (selected = 2)
@@ -628,12 +620,10 @@ mod tests {
         );
 
         // Now "c.txt" is deleted
-        let listing2 = Listing {
-            entries: vec![
-                make_test_entry("a.txt", 10, 1),
-                make_test_entry("b.txt", 20, 2),
-            ],
-        };
+        let listing2 = Listing::new(vec![
+            make_test_entry("a.txt", 10, 1),
+            make_test_entry("b.txt", 20, 2),
+        ]);
         app.update_listing(listing2);
         // Clamped to 1 (pointing to "b.txt")
         assert_eq!(app.selected, 1);
@@ -647,7 +637,7 @@ mod tests {
 
     #[test]
     fn test_app_update_listing_empty_handling() {
-        let mut app = App::new(Listing { entries: vec![] });
+        let mut app = App::new(Listing::new(vec![]));
         assert_eq!(
             app.file_rows
                 .len(),
@@ -659,9 +649,7 @@ mod tests {
             .is_none());
 
         // File added
-        let listing1 = Listing {
-            entries: vec![make_test_entry("a.txt", 10, 1)],
-        };
+        let listing1 = Listing::new(vec![make_test_entry("a.txt", 10, 1)]);
         app.update_listing(listing1);
         assert_eq!(
             app.file_rows
@@ -677,7 +665,7 @@ mod tests {
         );
 
         // All files deleted
-        app.update_listing(Listing { entries: vec![] });
+        app.update_listing(Listing::new(vec![]));
         assert_eq!(
             app.file_rows
                 .len(),
@@ -691,9 +679,7 @@ mod tests {
 
     #[test]
     fn test_app_update_listing_content_change_updates_ticket() {
-        let listing1 = Listing {
-            entries: vec![make_test_entry("a.txt", 10, 1)],
-        };
+        let listing1 = Listing::new(vec![make_test_entry("a.txt", 10, 1)]);
         let mut app = App::new(listing1);
         assert_eq!(
             app.selected_entry()
@@ -709,9 +695,7 @@ mod tests {
         );
 
         // File modified with new size and hash
-        let listing2 = Listing {
-            entries: vec![make_test_entry("a.txt", 50, 2)],
-        };
+        let listing2 = Listing::new(vec![make_test_entry("a.txt", 50, 2)]);
         app.update_listing(listing2);
         assert_eq!(app.selected, 0);
         assert_eq!(
@@ -737,9 +721,7 @@ mod tests {
     #[tokio::test]
     async fn test_live_listing_watcher_integration() {
         let secret1 = iroh::SecretKey::generate();
-        let initial_listing = Listing {
-            entries: vec![make_test_entry("first.txt", 10, 1)],
-        };
+        let initial_listing = Listing::new(vec![make_test_entry("first.txt", 10, 1)]);
         let listing_proto = laplink_p2p::listing::ListingProtocol::new(initial_listing.clone());
 
         let server_endpoint = build_endpoint(EndpointConfig {
@@ -792,12 +774,10 @@ mod tests {
         );
 
         // 2. Server updates listing
-        let updated_listing = Listing {
-            entries: vec![
-                make_test_entry("first.txt", 10, 1),
-                make_test_entry("second.txt", 20, 2),
-            ],
-        };
+        let updated_listing = Listing::new(vec![
+            make_test_entry("first.txt", 10, 1),
+            make_test_entry("second.txt", 20, 2),
+        ]);
         listing_proto.update(updated_listing.clone());
 
         let update = tokio::time::timeout(std::time::Duration::from_secs(5), listing_rx.recv())

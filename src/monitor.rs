@@ -248,7 +248,7 @@ pub async fn process_paths(
             a.path
                 .cmp(&b.path)
         });
-        let new_listing = Listing { entries };
+        let new_listing = Listing::new(entries);
         ctx.listing_protocol
             .update(new_listing.clone());
         eprintln!(
@@ -400,7 +400,7 @@ mod tests {
         let key = iroh::SecretKey::generate();
         let addr = iroh::EndpointAddr::from(key.public());
 
-        let initial_listing = Listing { entries: vec![] };
+        let initial_listing = Listing::new(vec![]);
         let listing_protocol = ListingProtocol::new(initial_listing);
         let mut update_rx = listing_protocol.subscribe();
         let mut entries_map = HashMap::new();
@@ -553,7 +553,7 @@ mod tests {
         let key = iroh::SecretKey::generate();
         let addr = iroh::EndpointAddr::from(key.public());
 
-        let initial_listing = Listing { entries: vec![] };
+        let initial_listing = Listing::new(vec![]);
         let listing_protocol = ListingProtocol::new(initial_listing);
         let entries_map = HashMap::new();
 
