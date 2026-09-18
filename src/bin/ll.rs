@@ -424,7 +424,7 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
     }
 
     // use a flat store - todo: use a partial in mem store instead
-    let suffix = rand::thread_rng().gen::<[u8; 16]>();
+    let suffix = rand::thread_rng().r#gen::<[u8; 16]>();
     let cwd = std::env::current_dir()?;
     let blobs_data_dir = cwd.join(format!(".ll-send-{}", HEXLOWER.encode(&suffix)));
     if blobs_data_dir.exists() {
