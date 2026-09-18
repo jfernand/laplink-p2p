@@ -51,6 +51,10 @@ struct ServeArgs {
     /// never itself served as part of the listing.
     #[clap(long)]
     store_dir: Option<PathBuf>,
+
+    /// Disable automatic filesystem monitoring for changes.
+    #[clap(long)]
+    no_watch: bool,
 }
 
 #[tokio::main]
@@ -98,32 +102,53 @@ async fn run() -> anyhow::Result<()> {
     eprintln!("importing {}...", folder.display());
     let files = import_flat(folder.clone(), &store, &store_dir).await?;
     let addr = endpoint.addr();
-    let (entries, tags): (Vec<Entry>, Vec<_>) = files
-        .into_iter()
-        .map(|(path, size, hash, tag)| {
-            let ticket = BlobTicket::new(addr.clone(), hash, BlobFormat::Raw);
-            (
-                Entry {
-                    path,
-                    size,
-                    hash,
-                    ticket,
-                },
-                tag,
-            )
-        })
-        .unzip();
-    // Keep every temp tag alive for the process lifetime so the blobs aren't GC'd.
-    let _tags = tags;
+    let mut entries_map = std::collections::HashMap::new();
+    for (path, size, hash, tag) in files {
+        let ticket = BlobTicket::new(addr.clone(), hash, BlobFormat::Raw);
+        let entry = Entry {
+            path: path.clone(),
+            size,
+            hash,
+            ticket,
+        };
+        entries_map.insert(path, (entry, tag));
+    }
+    let mut entries: Vec<Entry> = entries_map
+        .values()
+        .map(|(e, _)| e.clone())
+        .collect();
+    entries.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+    });
     let listing = Listing { entries };
+
+    let listing_protocol = ListingProtocol::new(listing.clone());
+
+    let (_watcher_handle, _static_tags) = if !args.no_watch {
+        match laplink_p2p::monitor::spawn_watcher(
+            folder.clone(),
+            store_dir.clone(),
+            store.clone(),
+            addr.clone(),
+            entries_map,
+            listing_protocol.clone(),
+            Duration::from_millis(200),
+        ) {
+            Ok(handle) => (Some(handle), None),
+            Err((e, map)) => {
+                eprintln!("warning: failed to start filesystem watcher: {e}");
+                (None, Some(map))
+            }
+        }
+    } else {
+        (None, Some(entries_map))
+    };
 
     let blobs = BlobsProtocol::new(&store, None);
     let router = iroh::protocol::Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, blobs.clone())
-        .accept(
-            laplink_p2p::listing::ALPN,
-            ListingProtocol::new(listing.clone()),
-        )
+        .accept(laplink_p2p::listing::ALPN, listing_protocol.clone())
         .spawn();
     router
         .endpoint()

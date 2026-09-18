@@ -437,3 +437,156 @@ fn ll_serve_per_folder_persistence() {
         .unwrap();
     assert_eq!(loaded.to_string(), ticket.to_string());
 }
+
+#[test]
+fn ll_serve_filesystem_monitoring() {
+    let folder = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    let initial_file = folder
+        .path()
+        .join("initial.txt");
+    std::fs::write(&initial_file, b"initial file content").unwrap();
+
+    let mut child = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .unwrap();
+    let output = read_ascii_lines(3, &mut stdout).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    let ticket_str = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
+    let ticket = iroh_tickets::endpoint::EndpointTicket::from_str(ticket_str).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (secret_key, _) = laplink_p2p::get_or_create_secret().unwrap();
+        let lookup_by_dns = ticket
+            .endpoint_addr()
+            .addrs
+            .is_empty();
+        let endpoint =
+            laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
+                secret_key: secret_key.clone(),
+                alpns: vec![],
+                relay: laplink_p2p::RelayModeOption::Default,
+                magic_ipv4_addr: None,
+                magic_ipv6_addr: None,
+                publish_addr: false,
+                lookup_by_dns,
+            })
+            .await
+            .unwrap();
+
+        // 1. Initial listing check
+        let listing = laplink_p2p::listing::fetch_listing(&endpoint, &ticket)
+            .await
+            .unwrap();
+        assert_eq!(
+            listing
+                .entries
+                .len(),
+            1
+        );
+        assert_eq!(listing.entries[0].path, "initial.txt");
+
+        // 2. Add a new file dynamically
+        let added_file = folder
+            .path()
+            .join("added.txt");
+        std::fs::write(&added_file, b"dynamically added content").unwrap();
+
+        // Wait for watcher to detect and update
+        let mut listing = listing;
+        for _ in 0..25 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await {
+                if l.entries
+                    .len()
+                    == 2
+                {
+                    listing = l;
+                    break;
+                }
+            }
+        }
+        assert_eq!(
+            listing
+                .entries
+                .len(),
+            2
+        );
+        let added_entry = listing
+            .entries
+            .iter()
+            .find(|e| e.path == "added.txt")
+            .expect("added.txt should exist");
+        assert_eq!(added_entry.size, 25);
+
+        // 3. Download the newly added file
+        let download_dir = tempfile::tempdir().unwrap();
+        let store_dir = download_dir
+            .path()
+            .join(".store");
+        let export_path = download_dir
+            .path()
+            .join("added.txt");
+        let cfg = laplink_p2p::endpoint::EndpointConfig {
+            secret_key,
+            alpns: vec![],
+            relay: laplink_p2p::RelayModeOption::Default,
+            magic_ipv4_addr: None,
+            magic_ipv6_addr: None,
+            publish_addr: false,
+            lookup_by_dns: false,
+        };
+        laplink_p2p::receive::receive_single(
+            added_entry
+                .ticket
+                .clone(),
+            cfg,
+            store_dir,
+            export_path.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        let downloaded = std::fs::read(&export_path).unwrap();
+        assert_eq!(downloaded, b"dynamically added content");
+
+        // 4. Delete the added file
+        std::fs::remove_file(&added_file).unwrap();
+        for _ in 0..25 {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await {
+                if l.entries
+                    .len()
+                    == 1
+                {
+                    listing = l;
+                    break;
+                }
+            }
+        }
+        assert_eq!(
+            listing
+                .entries
+                .len(),
+            1
+        );
+        assert_eq!(listing.entries[0].path, "initial.txt");
+    });
+
+    child
+        .kill()
+        .unwrap();
+    let _ = child.wait();
+}

@@ -1,12 +1,9 @@
-//! A minimal directory-listing protocol.
+//! Dynamic directory-listing protocol.
 //!
-//! This runs as a second ALPN handler on the same [`iroh::protocol::Router`]/[`iroh::Endpoint`]
-//! as the regular iroh-blobs transfer protocol. A client connects, sends a trivial request, and
-//! gets back a [`Listing`]: one [`Entry`] per file, each carrying a ready-to-use [`BlobTicket`]
-//! so downloads reuse the exact same blobs-ALPN fetch path `ll receive` already uses.
+//! Clients connect with ALPN [`ALPN`] and send a [`ListRequest`]. The server responds
+//! with a [`ListResponse`] and closes the send stream.
 //!
-//! v1 limitation: the listing is a point-in-time snapshot taken once at server startup — files
-//! added/removed on disk afterwards are not reflected until the server is restarted.
+//! The served listing can be updated dynamically as files on disk change.
 
 use std::sync::Arc;
 
@@ -18,28 +15,26 @@ use iroh::{
 use iroh_blobs::{ticket::BlobTicket, Hash};
 use iroh_tickets::endpoint::EndpointTicket;
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
 /// ALPN for the laplink-p2p file-listing protocol.
 pub const ALPN: &[u8] = b"iroh-file-server/list/0";
 
-/// Largest listing response we'll accept when reading from the wire.
-const MAX_LISTING_SIZE: usize = 64 * 1024 * 1024;
-/// Largest request we'll accept when reading from the wire.
+const MAX_LISTING_SIZE: usize = 16 * 1024 * 1024;
 const MAX_REQUEST_SIZE: usize = 4096;
 
 /// A single file entry in a listing response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     /// "/"-joined relative path from the served root.
     pub path: String,
     pub size: u64,
     pub hash: Hash,
-    /// Ready-to-use ticket: server's endpoint address + this entry's hash.
     pub ticket: BlobTicket,
 }
 
 /// A full directory listing, returned in response to a listing request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Listing {
     pub entries: Vec<Entry>,
 }
@@ -59,14 +54,37 @@ enum ListResponse {
 /// Server-side handler for the listing protocol.
 #[derive(Debug, Clone)]
 pub struct ListingProtocol {
-    listing: Arc<Listing>,
+    update_tx: Arc<watch::Sender<Listing>>,
+    update_rx: watch::Receiver<Listing>,
 }
 
 impl ListingProtocol {
     pub fn new(listing: Listing) -> Self {
+        let (update_tx, update_rx) = watch::channel(listing);
         Self {
-            listing: Arc::new(listing),
+            update_tx: Arc::new(update_tx),
+            update_rx,
         }
+    }
+
+    /// Update the current active listing.
+    pub fn update(&self, new_listing: Listing) {
+        let _ = self
+            .update_tx
+            .send(new_listing);
+    }
+
+    /// Retrieve the current listing snapshot.
+    pub fn listing(&self) -> Listing {
+        self.update_rx
+            .borrow()
+            .clone()
+    }
+
+    /// Subscribe to listing updates.
+    pub fn subscribe(&self) -> watch::Receiver<Listing> {
+        self.update_rx
+            .clone()
     }
 }
 
@@ -82,16 +100,14 @@ impl ProtocolHandler for ListingProtocol {
             .map_err(AcceptError::from_err)?;
         let _req: ListRequest = postcard::from_bytes(&req_bytes).map_err(AcceptError::from_err)?;
 
-        let resp = ListResponse::V0((*self.listing).clone());
+        let current_listing = self.listing();
+        let resp = ListResponse::V0(current_listing);
         let resp_bytes = postcard::to_stdvec(&resp).map_err(AcceptError::from_err)?;
         send.write_all(&resp_bytes)
             .await
             .map_err(AcceptError::from_err)?;
         send.finish()
             .ok();
-        // Wait for the peer to receive all of the response before tearing down the
-        // connection — otherwise the router may close it as soon as this future returns,
-        // racing the still-in-flight bytes.
         send.stopped()
             .await
             .ok();

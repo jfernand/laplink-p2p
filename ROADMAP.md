@@ -2,7 +2,7 @@
 
 This document outlines planned capabilities, architecture, and feature designs for future versions of `laplink-p2p`.
 
-## 1. Dynamic Filesystem Monitoring in `ll-serve`
+## 1. Dynamic Filesystem Monitoring in `ll-serve` (Implemented)
 
 ### Overview
 `ll-serve` monitors the served directory for filesystem changes in real time, updating the in-memory `Listing` and blob database (`FsStore`) dynamically as files are created, modified, renamed, or deleted without requiring a server restart.

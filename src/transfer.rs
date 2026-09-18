@@ -52,7 +52,7 @@ pub fn walk_data_sources(path: &Path) -> anyhow::Result<Vec<(String, PathBuf)>> 
 
 /// Import a single file into `db`, draining its progress stream and returning the resulting
 /// temp tag plus the file's size.
-async fn import_one(db: &Store, path: PathBuf) -> anyhow::Result<(TempTag, u64)> {
+pub async fn import_one(db: &Store, path: PathBuf) -> anyhow::Result<(TempTag, u64)> {
     let import = db.add_path_with_opts(AddPathOptions {
         path,
         mode: iroh_blobs::api::blobs::ImportMode::TryReference,

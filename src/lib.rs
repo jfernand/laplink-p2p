@@ -8,6 +8,7 @@
 pub mod args;
 pub mod endpoint;
 pub mod listing;
+pub mod monitor;
 pub mod paths;
 pub mod receive;
 pub mod secret;
