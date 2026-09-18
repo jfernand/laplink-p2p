@@ -702,3 +702,99 @@ fn ll_serve_subscription_stream() {
         .unwrap();
     let _ = child.wait();
 }
+
+#[test]
+fn ll_serve_and_client_version_logging() {
+    let folder = tempfile::tempdir().unwrap();
+    let config_dir = tempfile::tempdir().unwrap();
+    let test_file = folder.path().join("version_test.txt");
+    std::fs::write(&test_file, b"version test content").unwrap();
+
+    let mut child = std::process::Command::new(ll_serve_bin())
+        .arg(folder.path())
+        .env("LAPLINK_CONFIG_DIR", config_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .unwrap();
+    let output = read_ascii_lines(3, &mut stdout).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    let ticket_str = output
+        .split_ascii_whitespace()
+        .last()
+        .unwrap();
+    let ticket = iroh_tickets::endpoint::EndpointTicket::from_str(ticket_str).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (secret_key, _) = laplink_p2p::get_or_create_secret().unwrap();
+        let lookup_by_dns = ticket
+            .endpoint_addr()
+            .addrs
+            .is_empty();
+        let endpoint =
+            laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
+                secret_key,
+                alpns: vec![],
+                relay: laplink_p2p::RelayModeOption::Default,
+                magic_ipv4_addr: None,
+                magic_ipv6_addr: None,
+                publish_addr: false,
+                lookup_by_dns,
+            })
+            .await
+            .unwrap();
+
+        // 1. Fetch listing and verify server version communicated
+        let listing = laplink_p2p::listing::fetch_listing(&endpoint, &ticket)
+            .await
+            .unwrap();
+        assert_eq!(
+            listing.server_version(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+
+        // 2. Subscribe to listing and verify server version communicated
+        let mut stream = laplink_p2p::listing::subscribe_listing(&endpoint, &ticket)
+            .await
+            .unwrap();
+        let initial = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("stream frame");
+        assert_eq!(
+            initial.server_version(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+    });
+
+    child
+        .kill()
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let expected_serve_version = format!("ll-serve version: {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        stderr.contains(&expected_serve_version),
+        "expected stderr to contain '{expected_serve_version}', got:\n{stderr}"
+    );
+
+    // 3. Test ll-tui logs its own version
+    let empty_config = tempfile::tempdir().unwrap();
+    let tui_output = std::process::Command::new(ll_tui_bin())
+        .env("LAPLINK_CONFIG_DIR", empty_config.path())
+        .output()
+        .unwrap();
+    let tui_stderr = String::from_utf8_lossy(&tui_output.stderr);
+    let expected_tui_version = format!("ll-tui version: {}", env!("CARGO_PKG_VERSION"));
+    assert!(
+        tui_stderr.contains(&expected_tui_version),
+        "expected ll-tui to output '{expected_tui_version}', got:\n{tui_stderr}"
+    );
+}
