@@ -1,6 +1,6 @@
 [package]
 name = "laplink-p2p"
-version = "0.30.0"
+version = "0.30.1-dev"
 edition = "2021"
 authors = ["Javier Fernandez jfernand@me.com"]
 keywords = ["scp", "sftp", "network", "p2p", "holepunching"]
@@ -50,6 +50,7 @@ crossterm = { version = "0.29.0", features = [
   "osc52",
 ] }
 dirs = "7.0.0"
+qrcode = "0.14.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2.174", optional = true }
