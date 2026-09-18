@@ -42,7 +42,7 @@ use laplink_p2p::{
     AddrInfoOptions, Format, RelayModeOption,
 };
 use n0_future::{task::AbortOnDropHandle, StreamExt};
-use rand::Rng;
+use rand::{random};
 use tokio::{select, sync::mpsc};
 use tracing::{error, trace};
 use walkdir::WalkDir;
@@ -424,7 +424,7 @@ async fn send(args: SendArgs) -> anyhow::Result<()> {
     }
 
     // use a flat store - todo: use a partial in mem store instead
-    let suffix = rand::thread_rng().r#gen::<[u8; 16]>();
+    let suffix = random::<[u8; 16]>();
     let cwd = std::env::current_dir()?;
     let blobs_data_dir = cwd.join(format!(".ll-send-{}", HEXLOWER.encode(&suffix)));
     if blobs_data_dir.exists() {

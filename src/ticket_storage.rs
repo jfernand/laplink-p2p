@@ -186,7 +186,7 @@ mod tests {
             .lock()
             .unwrap();
         let temp = tempfile::tempdir().unwrap();
-        std::env::set_var("LAPLINK_CONFIG_DIR", temp.path());
+        unsafe { std::env::set_var("LAPLINK_CONFIG_DIR", temp.path()); }
 
         assert_eq!(load_last_ll_ticket().unwrap(), None);
 
@@ -200,7 +200,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
-        std::env::remove_var("LAPLINK_CONFIG_DIR");
+        unsafe { std::env::remove_var("LAPLINK_CONFIG_DIR"); }
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod tests {
             .lock()
             .unwrap();
         let temp = tempfile::tempdir().unwrap();
-        std::env::set_var("LAPLINK_CONFIG_DIR", temp.path());
+        unsafe { std::env::set_var("LAPLINK_CONFIG_DIR", temp.path()); }
 
         assert_eq!(load_last_tui_ticket().unwrap(), None);
 
@@ -222,7 +222,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(loaded.to_string(), ticket.to_string());
-        std::env::remove_var("LAPLINK_CONFIG_DIR");
+        unsafe { std::env::remove_var("LAPLINK_CONFIG_DIR"); }
     }
 
     #[test]
