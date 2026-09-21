@@ -503,7 +503,10 @@ async fn main() -> anyhow::Result<()> {
                                         magic_ipv4_addr: args.magic_ipv4_addr,
                                         magic_ipv6_addr: args.magic_ipv6_addr,
                                         publish_addr: false,
-                                        lookup_by_dns: false,
+                                        lookup_by_dns: entry
+                                            .ticket
+                                            .addr()
+                                            .is_empty(),
                                     };
                                     let store_dir = store_dir.clone();
                                     let (tx, rx) = mpsc::channel(32);
@@ -551,7 +554,11 @@ async fn main() -> anyhow::Result<()> {
                                         magic_ipv4_addr: args.magic_ipv4_addr,
                                         magic_ipv6_addr: args.magic_ipv6_addr,
                                         publish_addr: false,
-                                        lookup_by_dns: false,
+                                        lookup_by_dns: candidate
+                                            .entry
+                                            .ticket
+                                            .addr()
+                                            .is_empty(),
                                     };
                                     let store_dir = store_dir.clone();
                                     let (tx, rx) = mpsc::channel(32);
