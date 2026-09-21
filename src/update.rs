@@ -67,7 +67,9 @@ pub fn current_platform_target() -> &'static str {
 /// Parses a version string leniently, stripping an optional 'v' or 'V' prefix.
 pub fn parse_version(s: &str) -> Option<semver::Version> {
     let s = s.trim();
-    let s = s.strip_prefix(|c| c == 'v' || c == 'V').unwrap_or(s);
+    let s = s
+        .strip_prefix(|c| c == 'v' || c == 'V')
+        .unwrap_or(s);
     semver::Version::parse(s).ok()
 }
 
@@ -88,7 +90,9 @@ pub fn parse_update_filename(filename: &str, target: &str) -> Option<(semver::Ve
         }
     }
 
-    let stem = filename.strip_suffix(".exe").unwrap_or(filename);
+    let stem = filename
+        .strip_suffix(".exe")
+        .unwrap_or(filename);
     if let Some(version) = parse_binary_stem(stem, target) {
         return Some((version, AssetKind::StandaloneBinary));
     }
@@ -116,7 +120,11 @@ pub fn parse_update_candidate(
     target: &str,
     server_version: Option<&str>,
 ) -> Option<UpdateCandidate> {
-    let filename = entry.path.rsplit('/').next().unwrap_or(&entry.path);
+    let filename = entry
+        .path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&entry.path);
     if let Some((version, kind)) = parse_update_filename(filename, target) {
         return Some(UpdateCandidate {
             version,
@@ -170,7 +178,8 @@ pub fn find_available_update_for_target(
                             true
                         } else if candidate.version == current_best.version {
                             // Prefer archive over standalone binary if versions match
-                            candidate.kind == AssetKind::Archive && current_best.kind != AssetKind::Archive
+                            candidate.kind == AssetKind::Archive
+                                && current_best.kind != AssetKind::Archive
                         } else {
                             false
                         }
@@ -252,11 +261,14 @@ fn replace_file_atomic(dest: &Path, src: &Path) -> std::io::Result<()> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let parent = dest.parent().ok_or_else(|| {
-        std::io::Error::other("destination has no parent folder")
-    })?;
+    let parent = dest
+        .parent()
+        .ok_or_else(|| std::io::Error::other("destination has no parent folder"))?;
 
-    let prefix = if let Some(stem) = dest.file_stem().and_then(|s| s.to_str()) {
+    let prefix = if let Some(stem) = dest
+        .file_stem()
+        .and_then(|s| s.to_str())
+    {
         format!(".{}.__temp__", stem)
     } else {
         ".__update_temp__".to_string()
@@ -315,8 +327,13 @@ pub fn extract_and_replace_suite_in_dir(
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        if entry.file_type().is_file() {
-            let file_name = entry.file_name().to_string_lossy();
+        if entry
+            .file_type()
+            .is_file()
+        {
+            let file_name = entry
+                .file_name()
+                .to_string_lossy();
             if valid_names.contains(&file_name.as_ref()) {
                 let dest = install_dir.join(file_name.as_ref());
                 replace_binary(&dest, entry.path(), current_exe)?;
@@ -335,9 +352,9 @@ pub fn extract_and_replace_suite_in_dir(
 /// Extracts a release archive and replaces suite binaries in the directory of the running executable.
 pub fn extract_and_replace_suite(staged_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let current_exe = std::env::current_exe()?;
-    let install_dir = current_exe.parent().ok_or_else(|| {
-        anyhow::anyhow!("could not determine executable parent directory")
-    })?;
+    let install_dir = current_exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("could not determine executable parent directory"))?;
     extract_and_replace_suite_in_dir(staged_path, install_dir, Some(&current_exe))
 }
 
@@ -354,9 +371,9 @@ pub fn apply_update(
     candidate: &UpdateCandidate,
 ) -> anyhow::Result<Vec<PathBuf>> {
     let current_exe = std::env::current_exe()?;
-    let install_dir = current_exe.parent().ok_or_else(|| {
-        anyhow::anyhow!("could not determine executable parent directory")
-    })?;
+    let install_dir = current_exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("could not determine executable parent directory"))?;
 
     apply_update_to_dir(staged_path, candidate, install_dir, Some(&current_exe))
 }
@@ -376,7 +393,11 @@ pub fn apply_update_to_dir(
             let dest = if let Some(exe) = current_exe {
                 exe.to_path_buf()
             } else {
-                let bin_name = if cfg!(windows) { "ll-tui.exe" } else { "ll-tui" };
+                let bin_name = if cfg!(windows) {
+                    "ll-tui.exe"
+                } else {
+                    "ll-tui"
+                };
                 install_dir.join(bin_name)
             };
             replace_binary(&dest, staged_path, current_exe)?;
@@ -388,7 +409,7 @@ pub fn apply_update_to_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iroh_blobs::{ticket::BlobTicket, Hash};
+    use iroh_blobs::{Hash, ticket::BlobTicket};
 
     fn dummy_entry(path: &str) -> Entry {
         let ticket = BlobTicket::new(
@@ -414,25 +435,31 @@ mod tests {
 
     #[test]
     fn test_parse_update_filename_archives() {
-        let (ver, kind) = parse_update_filename("ll-v0.30.0-linux-x86_64.tar.gz", "linux-x86_64").unwrap();
+        let (ver, kind) =
+            parse_update_filename("ll-v0.30.0-linux-x86_64.tar.gz", "linux-x86_64").unwrap();
         assert_eq!(ver, semver::Version::parse("0.30.0").unwrap());
         assert_eq!(kind, AssetKind::Archive);
 
-        let (ver, kind) = parse_update_filename("ll-0.30.0-windows-x86_64.zip", "windows-x86_64").unwrap();
+        let (ver, kind) =
+            parse_update_filename("ll-0.30.0-windows-x86_64.zip", "windows-x86_64").unwrap();
         assert_eq!(ver, semver::Version::parse("0.30.0").unwrap());
         assert_eq!(kind, AssetKind::Archive);
 
         // Mismatched target returns None
-        assert!(parse_update_filename("ll-v0.30.0-darwin-aarch64.tar.gz", "linux-x86_64").is_none());
+        assert!(
+            parse_update_filename("ll-v0.30.0-darwin-aarch64.tar.gz", "linux-x86_64").is_none()
+        );
     }
 
     #[test]
     fn test_parse_update_filename_standalone_binaries() {
-        let (ver, kind) = parse_update_filename("ll-tui-v0.30.0-linux-x86_64", "linux-x86_64").unwrap();
+        let (ver, kind) =
+            parse_update_filename("ll-tui-v0.30.0-linux-x86_64", "linux-x86_64").unwrap();
         assert_eq!(ver, semver::Version::parse("0.30.0").unwrap());
         assert_eq!(kind, AssetKind::StandaloneBinary);
 
-        let (ver, kind) = parse_update_filename("ll-tui-v0.30.0-windows-x86_64.exe", "windows-x86_64").unwrap();
+        let (ver, kind) =
+            parse_update_filename("ll-tui-v0.30.0-windows-x86_64.exe", "windows-x86_64").unwrap();
         assert_eq!(ver, semver::Version::parse("0.30.0").unwrap());
         assert_eq!(kind, AssetKind::StandaloneBinary);
     }
@@ -452,15 +479,21 @@ mod tests {
             dummy_entry("ll-v0.29.0-linux-x86_64.tar.gz"),
             dummy_entry("ll-v0.30.0-linux-x86_64.tar.gz"),
             dummy_entry("ll-v0.31.0-linux-aarch64.tar.gz"), // different target
-            dummy_entry("ll-tui-v0.30.0-linux-x86_64"),      // archive preferred over binary
+            dummy_entry("ll-tui-v0.30.0-linux-x86_64"),     // archive preferred over binary
         ];
         let listing = Listing::new(entries);
 
         // Current version is 0.29.1-dev -> should select 0.30.0 archive
-        let update = find_available_update_for_target(&listing, "0.29.1-dev", "linux-x86_64").unwrap();
+        let update =
+            find_available_update_for_target(&listing, "0.29.1-dev", "linux-x86_64").unwrap();
         assert_eq!(update.version, semver::Version::parse("0.30.0").unwrap());
         assert_eq!(update.kind, AssetKind::Archive);
-        assert_eq!(update.entry.path, "ll-v0.30.0-linux-x86_64.tar.gz");
+        assert_eq!(
+            update
+                .entry
+                .path,
+            "ll-v0.30.0-linux-x86_64.tar.gz"
+        );
 
         // Current version is 0.30.0 -> no update available
         let update = find_available_update_for_target(&listing, "0.30.0", "linux-x86_64");
@@ -480,9 +513,13 @@ mod tests {
             header.set_size(content.len() as u64);
             header.set_mode(0o755);
             header.set_cksum();
-            tar.append_data(&mut header, *name, *content).unwrap();
+            tar.append_data(&mut header, *name, *content)
+                .unwrap();
         }
-        tar.into_inner().unwrap().finish().unwrap();
+        tar.into_inner()
+            .unwrap()
+            .finish()
+            .unwrap();
     }
 
     fn create_test_zip(path: &Path, files: &[(&str, &[u8])]) {
@@ -492,44 +529,63 @@ mod tests {
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         for (name, content) in files {
-            zip.start_file(*name, options).unwrap();
-            zip.write_all(content).unwrap();
+            zip.start_file(*name, options)
+                .unwrap();
+            zip.write_all(content)
+                .unwrap();
         }
-        zip.finish().unwrap();
+        zip.finish()
+            .unwrap();
     }
 
     #[test]
     fn test_extract_tar_gz() {
         let dir = tempfile::tempdir().unwrap();
-        let archive_path = dir.path().join("archive.tar.gz");
+        let archive_path = dir
+            .path()
+            .join("archive.tar.gz");
         create_test_tar_gz(&archive_path, &[("hello.txt", b"hello world")]);
 
-        let extract_dir = dir.path().join("extracted");
+        let extract_dir = dir
+            .path()
+            .join("extracted");
         std::fs::create_dir(&extract_dir).unwrap();
         extract_archive(&archive_path, &extract_dir).unwrap();
 
         let extracted_file = extract_dir.join("hello.txt");
-        assert_eq!(std::fs::read_to_string(extracted_file).unwrap(), "hello world");
+        assert_eq!(
+            std::fs::read_to_string(extracted_file).unwrap(),
+            "hello world"
+        );
     }
 
     #[test]
     fn test_extract_zip() {
         let dir = tempfile::tempdir().unwrap();
-        let archive_path = dir.path().join("archive.zip");
+        let archive_path = dir
+            .path()
+            .join("archive.zip");
         create_test_zip(&archive_path, &[("hello.txt", b"hello zip")]);
 
-        let extract_dir = dir.path().join("extracted");
+        let extract_dir = dir
+            .path()
+            .join("extracted");
         std::fs::create_dir(&extract_dir).unwrap();
         extract_archive(&archive_path, &extract_dir).unwrap();
 
         let extracted_file = extract_dir.join("hello.txt");
-        assert_eq!(std::fs::read_to_string(extracted_file).unwrap(), "hello zip");
+        assert_eq!(
+            std::fs::read_to_string(extracted_file).unwrap(),
+            "hello zip"
+        );
     }
 
     #[test]
     fn test_extract_and_replace_suite_in_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let install_dir = dir.path().join("bin");
+        let install_dir = dir
+            .path()
+            .join("bin");
         std::fs::create_dir(&install_dir).unwrap();
 
         // Create old mock binaries
@@ -538,7 +594,9 @@ mod tests {
         std::fs::write(install_dir.join("ll-tui"), b"old ll-tui").unwrap();
 
         // Create release archive with new binaries
-        let archive_path = dir.path().join("ll-v0.30.0-linux-x86_64.tar.gz");
+        let archive_path = dir
+            .path()
+            .join("ll-v0.30.0-linux-x86_64.tar.gz");
         create_test_tar_gz(
             &archive_path,
             &[
@@ -552,13 +610,21 @@ mod tests {
         assert_eq!(replaced.len(), 3);
 
         assert_eq!(std::fs::read(install_dir.join("ll")).unwrap(), b"new ll");
-        assert_eq!(std::fs::read(install_dir.join("ll-serve")).unwrap(), b"new ll-serve");
-        assert_eq!(std::fs::read(install_dir.join("ll-tui")).unwrap(), b"new ll-tui");
+        assert_eq!(
+            std::fs::read(install_dir.join("ll-serve")).unwrap(),
+            b"new ll-serve"
+        );
+        assert_eq!(
+            std::fs::read(install_dir.join("ll-tui")).unwrap(),
+            b"new ll-tui"
+        );
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::metadata(install_dir.join("ll")).unwrap().permissions();
+            let perms = std::fs::metadata(install_dir.join("ll"))
+                .unwrap()
+                .permissions();
             assert_eq!(perms.mode() & 0o111, 0o111);
         }
     }
@@ -566,14 +632,22 @@ mod tests {
     #[test]
     fn test_apply_update_to_dir_standalone() {
         let dir = tempfile::tempdir().unwrap();
-        let install_dir = dir.path().join("bin");
+        let install_dir = dir
+            .path()
+            .join("bin");
         std::fs::create_dir(&install_dir).unwrap();
 
-        let bin_name = if cfg!(windows) { "ll-tui.exe" } else { "ll-tui" };
+        let bin_name = if cfg!(windows) {
+            "ll-tui.exe"
+        } else {
+            "ll-tui"
+        };
         let dest = install_dir.join(bin_name);
         std::fs::write(&dest, b"old tui").unwrap();
 
-        let staged = dir.path().join("staged_binary");
+        let staged = dir
+            .path()
+            .join("staged_binary");
         std::fs::write(&staged, b"new standalone tui").unwrap();
 
         let candidate = UpdateCandidate {

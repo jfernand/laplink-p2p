@@ -10,13 +10,13 @@ pub mod endpoint;
 pub mod listing;
 pub mod monitor;
 pub mod paths;
+mod qr;
 pub mod receive;
 pub mod secret;
 pub mod send;
 pub mod ticket_storage;
 pub mod transfer;
 pub mod update;
-mod qr;
 
-pub use args::{apply_options, print_hash, AddrInfoOptions, Format, RelayModeOption};
+pub use args::{AddrInfoOptions, Format, RelayModeOption, apply_options, print_hash};
 pub use secret::get_or_create_secret;

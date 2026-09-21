@@ -8,10 +8,10 @@ use std::{
 
 use iroh::EndpointAddr;
 use iroh_blobs::{
+    BlobFormat,
     api::{Store, TempTag},
     store::fs::FsStore,
     ticket::BlobTicket,
-    BlobFormat,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::{mpsc, watch};
@@ -275,7 +275,9 @@ pub async fn process_paths(
                 .len()
         );
         tracing::info!(
-            files = new_listing.entries.len(),
+            files = new_listing
+                .entries
+                .len(),
             "filesystem change detected: updated listing"
         );
     }

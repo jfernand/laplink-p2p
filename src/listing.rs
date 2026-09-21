@@ -10,11 +10,11 @@
 use std::sync::Arc;
 
 use iroh::{
+    Endpoint,
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
-    Endpoint,
 };
-use iroh_blobs::{ticket::BlobTicket, Hash};
+use iroh_blobs::{Hash, ticket::BlobTicket};
 use iroh_tickets::endpoint::EndpointTicket;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -60,11 +60,13 @@ impl Listing {
     }
 
     pub fn server_version(&self) -> Option<&str> {
-        self.server_version.as_deref()
+        self.server_version
+            .as_deref()
     }
 
     pub fn version(&self) -> Option<&str> {
-        self.server_version.as_deref()
+        self.server_version
+            .as_deref()
     }
 }
 
@@ -171,8 +173,14 @@ impl ListingProtocol {
 
     /// Update the current active listing and notify all subscribers.
     pub fn update(&self, mut new_listing: Listing) {
-        if new_listing.server_version.is_none() {
-            new_listing.server_version = Some(self.server_version.clone());
+        if new_listing
+            .server_version
+            .is_none()
+        {
+            new_listing.server_version = Some(
+                self.server_version
+                    .clone(),
+            );
         }
         let _ = self
             .update_tx
@@ -418,7 +426,7 @@ mod tests {
     use iroh_blobs::BlobFormat;
 
     use super::*;
-    use crate::endpoint::{build_endpoint, EndpointConfig};
+    use crate::endpoint::{EndpointConfig, build_endpoint};
 
     #[tokio::test]
     async fn test_frame_serialization_roundtrip() {

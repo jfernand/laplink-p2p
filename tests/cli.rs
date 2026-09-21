@@ -94,9 +94,11 @@ fn send_recv_file() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output
-        .status
-        .success());
+    assert!(
+        receive_output
+            .status
+            .success()
+    );
     let tgt_file = tgt_dir
         .path()
         .join(name);
@@ -170,9 +172,11 @@ fn send_recv_dir() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output
-        .status
-        .success());
+    assert!(
+        receive_output
+            .status
+            .success()
+    );
     // validate directory structure
     for i in 0..5 {
         for j in 0..5 {
@@ -232,9 +236,11 @@ fn ll_remembers_ticket() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output
-        .status
-        .success());
+    assert!(
+        receive_output
+            .status
+            .success()
+    );
     let tgt_data1 = std::fs::read(
         tgt_dir1
             .path()
@@ -251,9 +257,11 @@ fn ll_remembers_ticket() {
         .stderr_to_stdout()
         .run()
         .unwrap();
-    assert!(receive_output2
-        .status
-        .success());
+    assert!(
+        receive_output2
+            .status
+            .success()
+    );
     let tgt_data2 = std::fs::read(
         tgt_dir2
             .path()
@@ -273,9 +281,11 @@ fn ll_remembers_ticket() {
         .unchecked()
         .run()
         .unwrap();
-    assert!(!receive_output3
-        .status
-        .success());
+    assert!(
+        !receive_output3
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -289,9 +299,11 @@ fn ll_tui_remembers_ticket() {
         .unchecked()
         .run()
         .unwrap();
-    assert!(!output
-        .status
-        .success());
+    assert!(
+        !output
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -418,9 +430,11 @@ fn ll_serve_per_folder_persistence() {
     let (secret1, gen1) =
         laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
     assert!(gen1);
-    assert!(store_dir
-        .join("secret_key")
-        .exists());
+    assert!(
+        store_dir
+            .join("secret_key")
+            .exists()
+    );
 
     let (secret2, gen2) =
         laplink_p2p::ticket_storage::get_or_create_serve_secret(&store_dir).unwrap();
@@ -707,7 +721,9 @@ fn ll_serve_subscription_stream() {
 fn ll_serve_and_client_version_logging() {
     let folder = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
-    let test_file = folder.path().join("version_test.txt");
+    let test_file = folder
+        .path()
+        .join("version_test.txt");
     std::fs::write(&test_file, b"version test content").unwrap();
 
     let mut child = std::process::Command::new(ll_serve_bin())
@@ -754,10 +770,7 @@ fn ll_serve_and_client_version_logging() {
         let listing = laplink_p2p::listing::fetch_listing(&endpoint, &ticket)
             .await
             .unwrap();
-        assert_eq!(
-            listing.server_version(),
-            Some(env!("CARGO_PKG_VERSION"))
-        );
+        assert_eq!(listing.server_version(), Some(env!("CARGO_PKG_VERSION")));
 
         // 2. Subscribe to listing and verify server version communicated
         let mut stream = laplink_p2p::listing::subscribe_listing(&endpoint, &ticket)
@@ -768,16 +781,15 @@ fn ll_serve_and_client_version_logging() {
             .await
             .unwrap()
             .expect("stream frame");
-        assert_eq!(
-            initial.server_version(),
-            Some(env!("CARGO_PKG_VERSION"))
-        );
+        assert_eq!(initial.server_version(), Some(env!("CARGO_PKG_VERSION")));
     });
 
     child
         .kill()
         .unwrap();
-    let out = child.wait_with_output().unwrap();
+    let out = child
+        .wait_with_output()
+        .unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
     let expected_serve_version = format!("ll-serve version: {}", env!("CARGO_PKG_VERSION"));
     assert!(
@@ -807,7 +819,9 @@ fn ll_tui_self_update_detection_and_apply() {
     // 1. Create a release archive matching the current platform target with version 99.0.0
     let target = laplink_p2p::update::current_platform_target();
     let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
-    let archive_path = folder.path().join(&archive_name);
+    let archive_path = folder
+        .path()
+        .join(&archive_name);
 
     {
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -822,9 +836,13 @@ fn ll_tui_self_update_detection_and_apply() {
             header.set_size(content.len() as u64);
             header.set_mode(0o755);
             header.set_cksum();
-            tar.append_data(&mut header, *name, *content).unwrap();
+            tar.append_data(&mut header, *name, *content)
+                .unwrap();
         }
-        tar.into_inner().unwrap().finish().unwrap();
+        tar.into_inner()
+            .unwrap()
+            .finish()
+            .unwrap();
     }
 
     // 2. Start ll-serve on the directory
@@ -836,7 +854,10 @@ fn ll_tui_self_update_detection_and_apply() {
         .spawn()
         .unwrap();
 
-    let mut stdout = child.stdout.take().unwrap();
+    let mut stdout = child
+        .stdout
+        .take()
+        .unwrap();
     let output = read_ascii_lines(3, &mut stdout).unwrap();
     let output = String::from_utf8(output).unwrap();
     let ticket_str = output
@@ -848,33 +869,45 @@ fn ll_tui_self_update_detection_and_apply() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         let (secret_key, _) = laplink_p2p::get_or_create_secret().unwrap();
-        let lookup_by_dns = ticket.endpoint_addr().addrs.is_empty();
-        let endpoint = laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
-            secret_key: secret_key.clone(),
-            alpns: vec![],
-            relay: laplink_p2p::RelayModeOption::Default,
-            magic_ipv4_addr: None,
-            magic_ipv6_addr: None,
-            publish_addr: false,
-            lookup_by_dns,
-        })
-        .await
-        .unwrap();
+        let lookup_by_dns = ticket
+            .endpoint_addr()
+            .addrs
+            .is_empty();
+        let endpoint =
+            laplink_p2p::endpoint::build_endpoint(laplink_p2p::endpoint::EndpointConfig {
+                secret_key: secret_key.clone(),
+                alpns: vec![],
+                relay: laplink_p2p::RelayModeOption::Default,
+                magic_ipv4_addr: None,
+                magic_ipv6_addr: None,
+                publish_addr: false,
+                lookup_by_dns,
+            })
+            .await
+            .unwrap();
 
         // 3. Fetch listing and detect update candidate
         let listing = laplink_p2p::listing::fetch_listing(&endpoint, &ticket)
             .await
             .unwrap();
 
-        let candidate = laplink_p2p::update::find_available_update(&listing, env!("CARGO_PKG_VERSION"))
-            .expect("should find update candidate for v99.0.0");
+        let candidate =
+            laplink_p2p::update::find_available_update(&listing, env!("CARGO_PKG_VERSION"))
+                .expect("should find update candidate for v99.0.0");
         assert_eq!(candidate.version, semver::Version::parse("99.0.0").unwrap());
         assert_eq!(candidate.kind, laplink_p2p::update::AssetKind::Archive);
-        assert_eq!(candidate.entry.path, archive_name);
+        assert_eq!(
+            candidate
+                .entry
+                .path,
+            archive_name
+        );
 
         // 4. Download update blob to temporary staging path
         let temp_staging_dir = tempfile::tempdir().unwrap();
-        let staged_path = temp_staging_dir.path().join(&archive_name);
+        let staged_path = temp_staging_dir
+            .path()
+            .join(&archive_name);
 
         let cfg = laplink_p2p::endpoint::EndpointConfig {
             secret_key,
@@ -888,9 +921,14 @@ fn ll_tui_self_update_detection_and_apply() {
         let store_dir = tempfile::tempdir().unwrap();
 
         laplink_p2p::receive::receive_single(
-            candidate.entry.ticket.clone(),
+            candidate
+                .entry
+                .ticket
+                .clone(),
             cfg,
-            store_dir.path().to_path_buf(),
+            store_dir
+                .path()
+                .to_path_buf(),
             staged_path.clone(),
             None,
         )
@@ -911,15 +949,30 @@ fn ll_tui_self_update_detection_and_apply() {
 
         assert_eq!(replaced.len(), 3);
         assert_eq!(
-            std::fs::read(mock_install_dir.path().join("ll")).unwrap(),
+            std::fs::read(
+                mock_install_dir
+                    .path()
+                    .join("ll")
+            )
+            .unwrap(),
             b"mock ll 99.0.0"
         );
         assert_eq!(
-            std::fs::read(mock_install_dir.path().join("ll-serve")).unwrap(),
+            std::fs::read(
+                mock_install_dir
+                    .path()
+                    .join("ll-serve")
+            )
+            .unwrap(),
             b"mock ll-serve 99.0.0"
         );
         assert_eq!(
-            std::fs::read(mock_install_dir.path().join("ll-tui")).unwrap(),
+            std::fs::read(
+                mock_install_dir
+                    .path()
+                    .join("ll-tui")
+            )
+            .unwrap(),
             b"mock ll-tui 99.0.0"
         );
 
@@ -927,6 +980,8 @@ fn ll_tui_self_update_detection_and_apply() {
         assert!(!staged_path.exists());
     });
 
-    child.kill().unwrap();
+    child
+        .kill()
+        .unwrap();
     let _ = child.wait();
 }

@@ -11,24 +11,24 @@ use clap::Parser;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
-    endpoint::{build_endpoint, EndpointConfig},
-    get_or_create_secret,
-    listing::{fetch_listing, subscribe_listing, Entry, Listing},
-    update::{find_available_update, UpdateCandidate},
     RelayModeOption,
+    endpoint::{EndpointConfig, build_endpoint},
+    get_or_create_secret,
+    listing::{Entry, Listing, fetch_listing, subscribe_listing},
+    update::{UpdateCandidate, find_available_update},
 };
 use n0_future::StreamExt;
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-    Terminal,
 };
 use tokio::sync::mpsc;
 
@@ -195,7 +195,10 @@ impl App {
         if !self.updating {
             self.available_update = find_available_update(&self.listing, env!("CARGO_PKG_VERSION"));
             if !self.downloading {
-                if self.available_update.is_some() {
+                if self
+                    .available_update
+                    .is_some()
+                {
                     self.status = "Enter to download, u to update, q to quit".to_string();
                 } else {
                     self.status = "Enter to download, q to quit".to_string();
@@ -333,7 +336,10 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         None => format!("ll-tui v{}", env!("CARGO_PKG_VERSION")),
     };
 
-    let base_header_text = match app.listing.server_version() {
+    let base_header_text = match app
+        .listing
+        .server_version()
+    {
         Some(ver) => format!(
             "{} entries | server v{}",
             app.listing
@@ -357,7 +363,10 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
         None => base_header_text,
     };
 
-    let header_block = if app.available_update.is_some() {
+    let header_block = if app
+        .available_update
+        .is_some()
+    {
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Yellow))
@@ -682,7 +691,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+    use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
     use super::*;
 
@@ -819,9 +828,10 @@ mod tests {
             0
         );
         assert_eq!(app.selected, 0);
-        assert!(app
-            .selected_entry()
-            .is_none());
+        assert!(
+            app.selected_entry()
+                .is_none()
+        );
 
         // File added
         let listing1 = Listing::new(vec![make_test_entry("a.txt", 10, 1)]);
@@ -847,9 +857,10 @@ mod tests {
             0
         );
         assert_eq!(app.selected, 0);
-        assert!(app
-            .selected_entry()
-            .is_none());
+        assert!(
+            app.selected_entry()
+                .is_none()
+        );
     }
 
     #[test]
@@ -993,15 +1004,27 @@ mod tests {
         ]);
 
         let mut app = App::new(listing);
-        assert!(app.available_update.is_some());
-        let candidate = app.available_update.as_ref().unwrap();
+        assert!(
+            app.available_update
+                .is_some()
+        );
+        let candidate = app
+            .available_update
+            .as_ref()
+            .unwrap();
         assert_eq!(candidate.version, semver::Version::parse("99.0.0").unwrap());
-        assert!(app.status.contains("u to update"));
+        assert!(
+            app.status
+                .contains("u to update")
+        );
 
         // When listing is updated to remove the update asset, available_update resets
         let new_listing = Listing::new(vec![make_test_entry("file.txt", 10, 1)]);
         app.update_listing(new_listing);
-        assert!(app.available_update.is_none());
+        assert!(
+            app.available_update
+                .is_none()
+        );
         assert_eq!(app.status, "Enter to download, q to quit");
     }
 
@@ -1013,13 +1036,20 @@ mod tests {
         let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
         let listing = Listing::new(vec![make_test_entry(&archive_name, 1024, 2)]);
         let app = App::new(listing);
-        assert!(app.available_update.is_some());
+        assert!(
+            app.available_update
+                .is_some()
+        );
 
         let backend = TestBackend::new(100, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| ui(f, &app)).unwrap();
+        terminal
+            .draw(|f| ui(f, &app))
+            .unwrap();
 
-        let buffer = terminal.backend().buffer();
+        let buffer = terminal
+            .backend()
+            .buffer();
         let buffer_str: String = buffer
             .content()
             .iter()
@@ -1056,6 +1086,9 @@ mod tests {
         );
         assert!(!app.updating);
         assert!(!app.downloading);
-        assert!(app.available_update.is_none());
+        assert!(
+            app.available_update
+                .is_none()
+        );
     }
 }

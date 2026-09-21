@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 
 use iroh_blobs::{
-    api::TempTag, format::collection::Collection, provider::events::EventSender, BlobsProtocol,
-    Hash,
+    BlobsProtocol, Hash, api::TempTag, format::collection::Collection,
+    provider::events::EventSender,
 };
 
 use crate::{
-    endpoint::{build_endpoint, EndpointConfig},
+    endpoint::{EndpointConfig, build_endpoint},
     transfer::import_collection,
 };
 

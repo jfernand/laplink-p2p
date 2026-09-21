@@ -9,8 +9,8 @@ use std::{
 
 use anyhow::Context;
 use clap::{
-    error::{ContextKind, ErrorKind},
     CommandFactory, Parser, Subcommand,
+    error::{ContextKind, ErrorKind},
 };
 use console::style;
 use data_encoding::HEXLOWER;
@@ -19,9 +19,10 @@ use indicatif::{
     HumanBytes, HumanDuration, MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle,
 };
 use iroh_blobs::{
+    BlobFormat, BlobsProtocol, Hash,
     api::{
-        blobs::{AddPathOptions, AddProgressItem, ImportMode},
         Store, TempTag,
+        blobs::{AddPathOptions, AddProgressItem, ImportMode},
     },
     format::collection::Collection,
     get::GetError,
@@ -31,18 +32,17 @@ use iroh_blobs::{
     },
     store::fs::FsStore,
     ticket::BlobTicket,
-    BlobFormat, BlobsProtocol, Hash,
 };
 use laplink_p2p::{
-    endpoint::{build_endpoint, EndpointConfig},
+    AddrInfoOptions, Format, RelayModeOption,
+    endpoint::{EndpointConfig, build_endpoint},
     get_or_create_secret,
     paths::canonicalized_path_to_string,
     print_hash,
     receive::ReceiveProgress,
-    AddrInfoOptions, Format, RelayModeOption,
 };
-use n0_future::{task::AbortOnDropHandle, StreamExt};
-use rand::{random};
+use n0_future::{StreamExt, task::AbortOnDropHandle};
+use rand::random;
 use tokio::{select, sync::mpsc};
 use tracing::{error, trace};
 use walkdir::WalkDir;
@@ -580,10 +580,10 @@ fn handle_key_press(set_clipboard: bool, ticket: BlobTicket) {
     use std::io;
 
     #[cfg(unix)]
-    use libc::{raise, SIGINT};
+    use libc::{SIGINT, raise};
 
     #[cfg(windows)]
-    use windows_sys::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_C_EVENT};
+    use windows_sys::Win32::System::Console::{CTRL_C_EVENT, GenerateConsoleCtrlEvent};
 
     if set_clipboard {
         add_to_clipboard(&ticket);

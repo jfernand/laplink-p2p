@@ -10,7 +10,7 @@ use n0_future::StreamExt;
 use tokio::sync::mpsc;
 
 use crate::{
-    endpoint::{build_endpoint, EndpointConfig},
+    endpoint::{EndpointConfig, build_endpoint},
     transfer::{export_collection, export_one},
 };
 

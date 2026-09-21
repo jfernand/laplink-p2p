@@ -8,19 +8,19 @@ use std::{
 
 use clap::Parser;
 use iroh_blobs::{
+    BlobFormat, BlobsProtocol,
     provider::events::{
         ConnectMode, EventMask, EventSender, ProviderMessage, RequestMode, RequestUpdate,
     },
     store::fs::FsStore,
     ticket::BlobTicket,
-    BlobFormat, BlobsProtocol,
 };
 use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
-    endpoint::{build_endpoint, EndpointConfig},
+    RelayModeOption,
+    endpoint::{EndpointConfig, build_endpoint},
     listing::{Entry, Listing, ListingProtocol},
     transfer::import_flat,
-    RelayModeOption,
 };
 
 /// Serve a folder of files over iroh for browsing/download with ll-tui.
@@ -169,22 +169,42 @@ async fn run() -> anyhow::Result<()> {
     tokio::spawn(async move {
         let mut connections: std::collections::HashMap<u64, Option<iroh::PublicKey>> =
             std::collections::HashMap::new();
-        while let Some(item) = event_rx.recv().await {
+        while let Some(item) = event_rx
+            .recv()
+            .await
+        {
             match item {
                 ProviderMessage::ClientConnected(msg) => {
-                    let connection_id = msg.inner.connection_id;
-                    let node_id = msg.inner.endpoint_id;
+                    let connection_id = msg
+                        .inner
+                        .connection_id;
+                    let node_id = msg
+                        .inner
+                        .endpoint_id;
                     connections.insert(connection_id, node_id);
-                    msg.tx.send(Ok(())).await.ok();
+                    msg.tx
+                        .send(Ok(()))
+                        .await
+                        .ok();
                 }
                 ProviderMessage::ConnectionClosed(msg) => {
-                    let connection_id = msg.inner.connection_id;
+                    let connection_id = msg
+                        .inner
+                        .connection_id;
                     connections.remove(&connection_id);
                 }
                 ProviderMessage::GetRequestReceived(msg) => {
-                    let connection_id = msg.inner.connection_id;
-                    let hash = msg.inner.request.hash;
-                    let node_id = connections.get(&connection_id).copied().flatten();
+                    let connection_id = msg
+                        .inner
+                        .connection_id;
+                    let hash = msg
+                        .inner
+                        .request
+                        .hash;
+                    let node_id = connections
+                        .get(&connection_id)
+                        .copied()
+                        .flatten();
                     let client_label = match node_id {
                         Some(id) => format!("client {id}"),
                         None => format!("client conn-{connection_id}"),
@@ -210,20 +230,30 @@ async fn run() -> anyhow::Result<()> {
                     eprintln!("{client_label}: requested {file_desc}");
                     tracing::info!(%hash, file = ?file_path, "{client_label}: requested {file_desc}");
 
-                    msg.tx.send(Ok(())).await.ok();
+                    msg.tx
+                        .send(Ok(()))
+                        .await
+                        .ok();
 
                     let mut rx = msg.rx;
                     tokio::spawn(async move {
-                        while let Ok(Some(update)) = rx.recv().await {
+                        while let Ok(Some(update)) = rx
+                            .recv()
+                            .await
+                        {
                             match update {
                                 RequestUpdate::Completed(_) => {
                                     eprintln!("{client_label}: completed download of {short_desc}");
-                                    tracing::info!("{client_label}: completed download of {short_desc}");
+                                    tracing::info!(
+                                        "{client_label}: completed download of {short_desc}"
+                                    );
                                     break;
                                 }
                                 RequestUpdate::Aborted(_) => {
                                     eprintln!("{client_label}: download aborted for {short_desc}");
-                                    tracing::info!("{client_label}: download aborted for {short_desc}");
+                                    tracing::info!(
+                                        "{client_label}: download aborted for {short_desc}"
+                                    );
                                     break;
                                 }
                                 _ => {}

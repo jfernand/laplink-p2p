@@ -3,9 +3,9 @@
 use std::net::{SocketAddrV4, SocketAddrV6};
 
 use iroh::{
+    Endpoint, SecretKey,
     address_lookup::{DnsAddressLookup, PkarrPublisher},
     endpoint::presets,
-    Endpoint, SecretKey,
 };
 
 use crate::args::RelayModeOption;

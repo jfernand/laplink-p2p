@@ -28,16 +28,32 @@ fn qr_to_braille(text: &str, invert: bool) -> String {
 
             // Map the 2x4 pixel grid onto the standard Unicode Braille bit flags
             // Left Column (dots 1, 2, 3, 7)
-            if get_bit(x, y)     { char_code |= 0x01; }
-            if get_bit(x, y + 1) { char_code |= 0x02; }
-            if get_bit(x, y + 2) { char_code |= 0x04; }
-            if get_bit(x, y + 3) { char_code |= 0x40; }
+            if get_bit(x, y) {
+                char_code |= 0x01;
+            }
+            if get_bit(x, y + 1) {
+                char_code |= 0x02;
+            }
+            if get_bit(x, y + 2) {
+                char_code |= 0x04;
+            }
+            if get_bit(x, y + 3) {
+                char_code |= 0x40;
+            }
 
             // Right Column (dots 4, 5, 6, 8)
-            if get_bit(x + 1, y)     { char_code |= 0x08; }
-            if get_bit(x + 1, y + 1) { char_code |= 0x10; }
-            if get_bit(x + 1, y + 2) { char_code |= 0x20; }
-            if get_bit(x + 1, y + 3) { char_code |= 0x80; }
+            if get_bit(x + 1, y) {
+                char_code |= 0x08;
+            }
+            if get_bit(x + 1, y + 1) {
+                char_code |= 0x10;
+            }
+            if get_bit(x + 1, y + 2) {
+                char_code |= 0x20;
+            }
+            if get_bit(x + 1, y + 3) {
+                char_code |= 0x80;
+            }
 
             // U+2800 is the blank Braille offset base character
             if let Some(ch) = char::from_u32(0x2800 + char_code) {
@@ -49,8 +65,6 @@ fn qr_to_braille(text: &str, invert: bool) -> String {
 
     output
 }
-
-
 
 #[cfg(test)]
 mod tests {
