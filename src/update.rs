@@ -79,15 +79,15 @@ pub fn parse_version(s: &str) -> Option<semver::Version> {
 /// - Release archives: `ll-v{version}-{target}.tar.gz`, `ll-{version}-{target}.tar.gz`, `.zip`
 /// - Standalone binaries: `ll-tui-v{version}-{target}`, `ll-tui-{version}-{target}` (with optional `.exe`)
 pub fn parse_update_filename(filename: &str, target: &str) -> Option<(semver::Version, AssetKind)> {
-    if let Some(stem) = filename.strip_suffix(".tar.gz") {
-        if let Some(version) = parse_archive_stem(stem, target) {
-            return Some((version, AssetKind::Archive));
-        }
+    if let Some(stem) = filename.strip_suffix(".tar.gz")
+        && let Some(version) = parse_archive_stem(stem, target)
+    {
+        return Some((version, AssetKind::Archive));
     }
-    if let Some(stem) = filename.strip_suffix(".zip") {
-        if let Some(version) = parse_archive_stem(stem, target) {
-            return Some((version, AssetKind::Archive));
-        }
+    if let Some(stem) = filename.strip_suffix(".zip")
+        && let Some(version) = parse_archive_stem(stem, target)
+    {
+        return Some((version, AssetKind::Archive));
     }
 
     let stem = filename
@@ -136,16 +136,15 @@ pub fn parse_update_candidate(
     // Standalone binary named exactly "ll-tui" or "ll-tui.exe"
     // when the server advertises its version.
     let is_exact_tui = filename == "ll-tui" || filename == "ll-tui.exe";
-    if is_exact_tui {
-        if let Some(sv) = server_version {
-            if let Some(version) = parse_version(sv) {
-                return Some(UpdateCandidate {
-                    version,
-                    entry: entry.clone(),
-                    kind: AssetKind::StandaloneBinary,
-                });
-            }
-        }
+    if is_exact_tui
+        && let Some(sv) = server_version
+        && let Some(version) = parse_version(sv)
+    {
+        return Some(UpdateCandidate {
+            version,
+            entry: entry.clone(),
+            kind: AssetKind::StandaloneBinary,
+        });
     }
 
     None
@@ -169,25 +168,25 @@ pub fn find_available_update_for_target(
     let mut best_candidate: Option<UpdateCandidate> = None;
 
     for entry in &listing.entries {
-        if let Some(candidate) = parse_update_candidate(entry, target, server_ver) {
-            if candidate.version > current_version {
-                let replace = match &best_candidate {
-                    None => true,
-                    Some(current_best) => {
-                        if candidate.version > current_best.version {
-                            true
-                        } else if candidate.version == current_best.version {
-                            // Prefer archive over standalone binary if versions match
-                            candidate.kind == AssetKind::Archive
-                                && current_best.kind != AssetKind::Archive
-                        } else {
-                            false
-                        }
+        if let Some(candidate) = parse_update_candidate(entry, target, server_ver)
+            && candidate.version > current_version
+        {
+            let replace = match &best_candidate {
+                None => true,
+                Some(current_best) => {
+                    if candidate.version > current_best.version {
+                        true
+                    } else if candidate.version == current_best.version {
+                        // Prefer archive over standalone binary if versions match
+                        candidate.kind == AssetKind::Archive
+                            && current_best.kind != AssetKind::Archive
+                    } else {
+                        false
                     }
-                };
-                if replace {
-                    best_candidate = Some(candidate);
                 }
+            };
+            if replace {
+                best_candidate = Some(candidate);
             }
         }
     }

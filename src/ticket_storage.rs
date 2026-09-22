@@ -103,12 +103,12 @@ pub fn load_last_tui_ticket() -> anyhow::Result<Option<EndpointTicket>> {
         let local_ticket = cwd
             .join(".ll-serve-store")
             .join("ticket");
-        if local_ticket.exists() {
-            if let Ok(content) = std::fs::read_to_string(&local_ticket) {
-                let trimmed = content.trim();
-                if let Ok(ticket) = EndpointTicket::from_str(trimmed) {
-                    return Ok(Some(ticket));
-                }
+        if local_ticket.exists()
+            && let Ok(content) = std::fs::read_to_string(&local_ticket)
+        {
+            let trimmed = content.trim();
+            if let Ok(ticket) = EndpointTicket::from_str(trimmed) {
+                return Ok(Some(ticket));
             }
         }
     }

@@ -522,14 +522,13 @@ fn ll_serve_filesystem_monitoring() {
         let mut listing = listing;
         for _ in 0..25 {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await {
-                if l.entries
+            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await
+                && l.entries
                     .len()
                     == 2
-                {
-                    listing = l;
-                    break;
-                }
+            {
+                listing = l;
+                break;
             }
         }
         assert_eq!(
@@ -580,14 +579,13 @@ fn ll_serve_filesystem_monitoring() {
         std::fs::remove_file(&added_file).unwrap();
         for _ in 0..25 {
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await {
-                if l.entries
+            if let Ok(l) = laplink_p2p::listing::fetch_listing(&endpoint, &ticket).await
+                && l.entries
                     .len()
                     == 1
-                {
-                    listing = l;
-                    break;
-                }
+            {
+                listing = l;
+                break;
             }
         }
         assert_eq!(

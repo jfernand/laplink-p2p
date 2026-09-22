@@ -91,26 +91,22 @@ pub fn get_relative_name(folder: &Path, path: &Path) -> Option<String> {
     }
     if path.is_relative() {
         let full = folder.join(path);
-        if let Ok(rel) = full.strip_prefix(folder) {
-            if !rel
+        if let Ok(rel) = full.strip_prefix(folder)
+            && !rel
                 .as_os_str()
                 .is_empty()
-            {
-                return canonicalized_path_to_string(rel, true).ok();
-            }
+        {
+            return canonicalized_path_to_string(rel, true).ok();
         }
     }
-    if path.exists() {
-        if let Ok(canon) = path.canonicalize() {
-            if let Ok(rel) = canon.strip_prefix(folder) {
-                if !rel
-                    .as_os_str()
-                    .is_empty()
-                {
-                    return canonicalized_path_to_string(rel, true).ok();
-                }
-            }
-        }
+    if path.exists()
+        && let Ok(canon) = path.canonicalize()
+        && let Ok(rel) = canon.strip_prefix(folder)
+        && !rel
+            .as_os_str()
+            .is_empty()
+    {
+        return canonicalized_path_to_string(rel, true).ok();
     }
     None
 }
@@ -209,25 +205,22 @@ pub async fn process_paths(
                         .await;
                     }
                 }
-            } else if path.is_file() {
-                if let Ok(meta) = std::fs::symlink_metadata(&path) {
-                    if !meta
-                        .file_type()
-                        .is_symlink()
-                    {
-                        if let Some(rel_name) = get_relative_name(ctx.folder, &path) {
-                            import_and_update(
-                                ctx.store,
-                                ctx.addr,
-                                &path,
-                                rel_name,
-                                entries_map,
-                                &mut changed,
-                            )
-                            .await;
-                        }
-                    }
-                }
+            } else if path.is_file()
+                && let Ok(meta) = std::fs::symlink_metadata(&path)
+                && !meta
+                    .file_type()
+                    .is_symlink()
+                && let Some(rel_name) = get_relative_name(ctx.folder, &path)
+            {
+                import_and_update(
+                    ctx.store,
+                    ctx.addr,
+                    &path,
+                    rel_name,
+                    entries_map,
+                    &mut changed,
+                )
+                .await;
             }
         } else {
             // Path no longer exists: handle single file deletion or directory tree deletion.
