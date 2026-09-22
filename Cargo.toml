@@ -8,6 +8,8 @@ categories = ["network-programming"]
 license = "Apache-2.0 OR MIT"
 description = "A cli tool to send directories over the network, with NAT hole punching"
 readme = "README.md"
+repository = "https://github.com/jfernand/laplink-p2p"
+homepage = "https://github.com/jfernand/laplink-p2p"
 
 # Sadly this also needs to be updated in .github/workflows/ci.yml
 rust-version = "1.91"

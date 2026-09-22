@@ -1,5 +1,10 @@
 use qrcode::{EcLevel, QrCode, Version};
 
+/// Renders a QR code as a grid of Unicode Braille characters (2x4 pixels per glyph).
+///
+/// Not wired into any binary yet -- built for a "scan a ticket off your phone" flow
+/// that hasn't been added to `ll-serve`/`ll-tui`. See ROADMAP.md.
+#[allow(dead_code)]
 fn qr_to_braille(text: &str, invert: bool) -> String {
     // 1. Generate the standard QR code matrix with a small 1-unit border
     let code = QrCode::with_version(text, Version::Normal(1), EcLevel::L)
