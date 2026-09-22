@@ -25,10 +25,10 @@ use n0_future::StreamExt;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 use tokio::sync::mpsc;
 
@@ -120,10 +120,12 @@ struct App {
     download_rx: Option<mpsc::Receiver<DownloadEvent>>,
     available_update: Option<UpdateCandidate>,
     updating: bool,
+    ticket_info: String,
+    show_ticket_info: bool,
 }
 
 impl App {
-    fn new(listing: Listing) -> Self {
+    fn new(listing: Listing, ticket_info: String) -> Self {
         let available_update = find_available_update(&listing, env!("CARGO_PKG_VERSION"));
         let rows = build_rows(&listing);
         let file_rows = rows
@@ -136,9 +138,9 @@ impl App {
             .map(|(i, _)| i)
             .collect();
         let status = if available_update.is_some() {
-            "Enter to download, u to update, q to quit".to_string()
+            "Enter to download, u to update, i for ticket info, q to quit".to_string()
         } else {
-            "Enter to download, q to quit".to_string()
+            "Enter to download, i for ticket info, q to quit".to_string()
         };
         Self {
             listing,
@@ -150,6 +152,8 @@ impl App {
             download_rx: None,
             available_update,
             updating: false,
+            ticket_info,
+            show_ticket_info: false,
         }
     }
 
@@ -199,9 +203,10 @@ impl App {
                     .available_update
                     .is_some()
                 {
-                    self.status = "Enter to download, u to update, q to quit".to_string();
+                    self.status =
+                        "Enter to download, u to update, i for ticket info, q to quit".to_string();
                 } else {
-                    self.status = "Enter to download, q to quit".to_string();
+                    self.status = "Enter to download, i for ticket info, q to quit".to_string();
                 }
             }
         }
@@ -426,6 +431,45 @@ fn ui(f: &mut ratatui::Frame, app: &App) {
             .title("status"),
     );
     f.render_widget(status, chunks[2]);
+
+    if app.show_ticket_info {
+        render_ticket_info_dialog(f, &app.ticket_info);
+    }
+}
+
+fn render_ticket_info_dialog(f: &mut ratatui::Frame, ticket_info: &str) {
+    let area = f.area();
+    let width = area
+        .width
+        .saturating_sub(4)
+        .clamp(20, 70);
+    let height = ticket_info
+        .lines()
+        .count() as u16
+        + 4;
+    let height = height.min(
+        area.height
+            .saturating_sub(2),
+    );
+    let x = (area
+        .width
+        .saturating_sub(width))
+        / 2;
+    let y = (area
+        .height
+        .saturating_sub(height))
+        / 2;
+    let popup = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, popup);
+    let dialog = Paragraph::new(ticket_info)
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("ticket info (i/Esc to close)"),
+        );
+    f.render_widget(dialog, popup);
 }
 
 #[tokio::main]
@@ -469,7 +513,8 @@ async fn main() -> anyhow::Result<()> {
         %client_version,
         "connected to server"
     );
-    let mut app = App::new(listing);
+    let ticket_info = laplink_p2p::args::describe_endpoint_addr(ticket.endpoint_addr());
+    let mut app = App::new(listing, ticket_info);
 
     let store_dir = std::env::current_dir()?.join(".ll-tui-store");
 
@@ -491,7 +536,14 @@ async fn main() -> anyhow::Result<()> {
                 match maybe_event {
                     Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
                         match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => break,
+                            KeyCode::Char('q') | KeyCode::Esc => {
+                                if app.show_ticket_info {
+                                    app.show_ticket_info = false;
+                                } else {
+                                    break;
+                                }
+                            }
+                            KeyCode::Char('i') => app.show_ticket_info = !app.show_ticket_info,
                             KeyCode::Up | KeyCode::Char('k') => app.move_up(),
                             KeyCode::Down | KeyCode::Char('j') => app.move_down(),
                             KeyCode::Enter if !app.downloading && !app.updating => {
@@ -704,7 +756,7 @@ mod tests {
             make_test_entry("dir/b.txt", 10, 1),
             make_test_entry("dir/a.txt", 20, 2),
         ]);
-        let mut app = App::new(listing);
+        let mut app = App::new(listing, String::new());
         assert_eq!(
             app.file_rows
                 .len(),
@@ -749,7 +801,7 @@ mod tests {
             make_test_entry("b.txt", 10, 1),
             make_test_entry("c.txt", 20, 2),
         ]);
-        let mut app = App::new(listing1);
+        let mut app = App::new(listing1, String::new());
         app.move_down(); // select c.txt (selected = 1)
         assert_eq!(
             app.selected_entry()
@@ -782,7 +834,7 @@ mod tests {
             make_test_entry("b.txt", 20, 2),
             make_test_entry("c.txt", 30, 3),
         ]);
-        let mut app = App::new(listing1);
+        let mut app = App::new(listing1, String::new());
         app.move_down();
         app.move_down(); // select c.txt (selected = 2)
         assert_eq!(
@@ -810,7 +862,7 @@ mod tests {
 
     #[test]
     fn test_app_update_listing_empty_handling() {
-        let mut app = App::new(Listing::new(vec![]));
+        let mut app = App::new(Listing::new(vec![]), String::new());
         assert_eq!(
             app.file_rows
                 .len(),
@@ -855,7 +907,7 @@ mod tests {
     #[test]
     fn test_app_update_listing_content_change_updates_ticket() {
         let listing1 = Listing::new(vec![make_test_entry("a.txt", 10, 1)]);
-        let mut app = App::new(listing1);
+        let mut app = App::new(listing1, String::new());
         assert_eq!(
             app.selected_entry()
                 .unwrap()
@@ -941,7 +993,7 @@ mod tests {
         assert_eq!(initial.entries, initial_listing.entries);
         assert_eq!(initial.server_version(), Some(env!("CARGO_PKG_VERSION")));
 
-        let mut app = App::new(initial);
+        let mut app = App::new(initial, String::new());
         assert_eq!(
             app.selected_entry()
                 .unwrap()
@@ -992,7 +1044,7 @@ mod tests {
             make_test_entry(&archive_name, 1024, 2),
         ]);
 
-        let mut app = App::new(listing);
+        let mut app = App::new(listing, String::new());
         assert!(
             app.available_update
                 .is_some()
@@ -1014,7 +1066,10 @@ mod tests {
             app.available_update
                 .is_none()
         );
-        assert_eq!(app.status, "Enter to download, q to quit");
+        assert_eq!(
+            app.status,
+            "Enter to download, i for ticket info, q to quit"
+        );
     }
 
     #[test]
@@ -1024,7 +1079,7 @@ mod tests {
         let target = laplink_p2p::update::current_platform_target();
         let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
         let listing = Listing::new(vec![make_test_entry(&archive_name, 1024, 2)]);
-        let app = App::new(listing);
+        let app = App::new(listing, String::new());
         assert!(
             app.available_update
                 .is_some()
@@ -1054,7 +1109,7 @@ mod tests {
         let target = laplink_p2p::update::current_platform_target();
         let archive_name = format!("ll-v99.0.0-{target}.tar.gz");
         let listing = Listing::new(vec![make_test_entry(&archive_name, 1024, 2)]);
-        let mut app = App::new(listing);
+        let mut app = App::new(listing, String::new());
         app.updating = true;
         app.downloading = true;
 

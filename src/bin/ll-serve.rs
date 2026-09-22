@@ -217,18 +217,12 @@ async fn run() -> anyhow::Result<()> {
                         .find(|e| e.hash == hash)
                         .map(|e| e.path);
 
-                    let file_desc = match &file_path {
-                        Some(path) => format!("file \"{path}\" (hash {})", hash.fmt_short()),
-                        None => format!("blob {}", hash.fmt_short()),
-                    };
-
-                    let short_desc = match &file_path {
-                        Some(path) => format!("file \"{path}\""),
-                        None => format!("blob {}", hash.fmt_short()),
-                    };
-
-                    eprintln!("{client_label}: requested {file_desc}");
-                    tracing::info!(%hash, file = ?file_path, "{client_label}: requested {file_desc}");
+                    tracing::info!(
+                        client = %client_label,
+                        %hash,
+                        file = ?file_path,
+                        "requested"
+                    );
 
                     msg.tx
                         .send(Ok(()))
@@ -243,16 +237,20 @@ async fn run() -> anyhow::Result<()> {
                         {
                             match update {
                                 RequestUpdate::Completed(_) => {
-                                    eprintln!("{client_label}: completed download of {short_desc}");
                                     tracing::info!(
-                                        "{client_label}: completed download of {short_desc}"
+                                        client = %client_label,
+                                        %hash,
+                                        file = ?file_path,
+                                        "completed"
                                     );
                                     break;
                                 }
                                 RequestUpdate::Aborted(_) => {
-                                    eprintln!("{client_label}: download aborted for {short_desc}");
                                     tracing::info!(
-                                        "{client_label}: download aborted for {short_desc}"
+                                        client = %client_label,
+                                        %hash,
+                                        file = ?file_path,
+                                        "aborted"
                                     );
                                     break;
                                 }
@@ -301,6 +299,12 @@ async fn run() -> anyhow::Result<()> {
     );
     println!("to browse, use");
     println!("ll-tui {ticket}");
+    println!();
+    println!("ticket breakdown:");
+    println!(
+        "{}",
+        laplink_p2p::args::describe_endpoint_addr(ticket.endpoint_addr())
+    );
 
     tokio::signal::ctrl_c().await?;
     println!("shutting down");

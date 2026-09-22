@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use iroh::{EndpointAddr, RelayMode, RelayUrl};
+use iroh::{EndpointAddr, RelayMode, RelayUrl, TransportAddr};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -137,4 +137,45 @@ pub fn apply_options(addr: &mut EndpointAddr, opts: AddrInfoOptions) {
                 .retain(|a| a.is_ip());
         }
     }
+}
+
+/// Human-readable breakdown of an [`EndpointAddr`] for diagnostics: the node id, relay
+/// URL (if any), and each direct address it carries.
+pub fn describe_endpoint_addr(addr: &EndpointAddr) -> String {
+    let mut lines = vec![format!("node id: {}", addr.id)];
+
+    let relays: Vec<String> = addr
+        .addrs
+        .iter()
+        .filter_map(|a| match a {
+            TransportAddr::Relay(url) => Some(url.to_string()),
+            _ => None,
+        })
+        .collect();
+    if relays.is_empty() {
+        lines.push("relay: (none)".to_string());
+    } else {
+        for relay in relays {
+            lines.push(format!("relay: {relay}"));
+        }
+    }
+
+    let direct: Vec<String> = addr
+        .addrs
+        .iter()
+        .filter_map(|a| match a {
+            TransportAddr::Ip(socket_addr) => Some(socket_addr.to_string()),
+            _ => None,
+        })
+        .collect();
+    if direct.is_empty() {
+        lines.push("direct addresses: (none)".to_string());
+    } else {
+        lines.push("direct addresses:".to_string());
+        for addr in direct {
+            lines.push(format!("  {addr}"));
+        }
+    }
+
+    lines.join("\n")
 }
