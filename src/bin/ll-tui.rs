@@ -445,10 +445,6 @@ async fn main() -> anyhow::Result<()> {
     };
     let (secret_key, _) = get_or_create_secret()?;
 
-    let lookup_by_dns = ticket
-        .endpoint_addr()
-        .addrs
-        .is_empty();
     let endpoint = build_endpoint(EndpointConfig {
         secret_key: secret_key.clone(),
         alpns: vec![],
@@ -458,7 +454,7 @@ async fn main() -> anyhow::Result<()> {
         magic_ipv4_addr: args.magic_ipv4_addr,
         magic_ipv6_addr: args.magic_ipv6_addr,
         publish_addr: false,
-        lookup_by_dns,
+        lookup_by_dns: true,
     })
     .await?;
 
@@ -512,10 +508,7 @@ async fn main() -> anyhow::Result<()> {
                                         magic_ipv4_addr: args.magic_ipv4_addr,
                                         magic_ipv6_addr: args.magic_ipv6_addr,
                                         publish_addr: false,
-                                        lookup_by_dns: entry
-                                            .ticket
-                                            .addr()
-                                            .is_empty(),
+                                        lookup_by_dns: true,
                                     };
                                     let store_dir = store_dir.clone();
                                     let (tx, rx) = mpsc::channel(32);
@@ -563,11 +556,7 @@ async fn main() -> anyhow::Result<()> {
                                         magic_ipv4_addr: args.magic_ipv4_addr,
                                         magic_ipv6_addr: args.magic_ipv6_addr,
                                         publish_addr: false,
-                                        lookup_by_dns: candidate
-                                            .entry
-                                            .ticket
-                                            .addr()
-                                            .is_empty(),
+                                        lookup_by_dns: true,
                                     };
                                     let store_dir = store_dir.clone();
                                     let (tx, rx) = mpsc::channel(32);

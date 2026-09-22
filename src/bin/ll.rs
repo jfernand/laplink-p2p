@@ -781,9 +781,6 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
     let store_dir = std::env::current_dir()?.join(dir_name);
     let export_root = std::env::current_dir()?;
 
-    let lookup_by_dns = ticket
-        .addr()
-        .is_empty();
     let cfg = EndpointConfig {
         secret_key,
         alpns: vec![],
@@ -797,7 +794,7 @@ async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
             .common
             .magic_ipv6_addr,
         publish_addr: false,
-        lookup_by_dns,
+        lookup_by_dns: true,
     };
 
     let mp: MultiProgress = MultiProgress::new();
