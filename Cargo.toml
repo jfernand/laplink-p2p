@@ -1,6 +1,6 @@
 [package]
 name = "laplink-p2p"
-version = "0.30.6"
+version = "0.30.7"
 edition = "2024"
 authors = ["Javier Fernandez jfernand@me.com"]
 keywords = ["iroh", "scp", "sftp", "network", "p2p"]
