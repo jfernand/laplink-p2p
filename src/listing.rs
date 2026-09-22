@@ -215,12 +215,6 @@ impl ListingProtocol {
             ListRequest::V0 => {
                 let current_listing = self.listing();
                 let server_ver = self.server_version();
-                eprintln!(
-                    "client {node_id}: requested listing snapshot ({} files, server version {server_ver})",
-                    current_listing
-                        .entries
-                        .len()
-                );
                 tracing::info!(
                     %node_id,
                     files = current_listing.entries.len(),
@@ -240,9 +234,6 @@ impl ListingProtocol {
             }
             ListRequest::SubscribeV0 => {
                 let server_ver = self.server_version();
-                eprintln!(
-                    "client {node_id}: subscribed to live listing updates (server version {server_ver})"
-                );
                 tracing::info!(
                     %node_id,
                     server_version = server_ver,
@@ -264,12 +255,6 @@ impl ListingProtocol {
                                 break;
                             }
                             let new_listing = rx.borrow_and_update().clone();
-                            eprintln!(
-                                "client {node_id}: pushed listing update ({} files)",
-                                new_listing
-                                    .entries
-                                    .len()
-                            );
                             tracing::info!(
                                 %node_id,
                                 files = new_listing.entries.len(),
@@ -285,7 +270,6 @@ impl ListingProtocol {
                         }
                     }
                 }
-                eprintln!("client {node_id}: unsubscribed from live listing updates");
                 tracing::info!(%node_id, "client unsubscribed from live listing updates");
                 send.finish()
                     .ok();
