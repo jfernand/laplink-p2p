@@ -174,6 +174,38 @@ pub fn get_or_create_serve_secret(store_dir: &Path) -> anyhow::Result<(SecretKey
     Ok((key, true))
 }
 
+/// Get or create the persistent secret key used by `ll` and `ll-tui` as clients.
+///
+/// Unlike [`get_or_create_serve_secret`], this is a single identity shared across all
+/// folders/tickets a client browses or downloads from, stored in the global config
+/// directory rather than per-folder. If `IROH_SECRET` is set in the environment, that
+/// takes precedence.
+pub fn get_or_create_client_secret() -> anyhow::Result<(SecretKey, bool)> {
+    if let Ok(secret) = std::env::var("IROH_SECRET") {
+        return Ok((
+            SecretKey::from_str(&secret).context("invalid secret in IROH_SECRET")?,
+            false,
+        ));
+    }
+
+    let key_path = config_dir()?.join("client_secret_key");
+    if key_path.exists() {
+        let content = std::fs::read_to_string(&key_path)
+            .with_context(|| format!("failed to read secret key from {}", key_path.display()))?;
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            let key = SecretKey::from_str(trimmed)
+                .with_context(|| format!("invalid secret key in {}", key_path.display()))?;
+            return Ok((key, false));
+        }
+    }
+
+    let key = SecretKey::generate();
+    std::fs::write(&key_path, hex::encode(key.to_bytes()))
+        .with_context(|| format!("failed to write secret key to {}", key_path.display()))?;
+    Ok((key, true))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +309,26 @@ mod tests {
                 .to_string(),
             ticket_b.to_string()
         );
+    }
+
+    #[test]
+    fn test_client_secret_persists_across_calls() {
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        unsafe {
+            std::env::set_var("LAPLINK_CONFIG_DIR", temp.path());
+        }
+
+        let (secret, generated) = get_or_create_client_secret().unwrap();
+        assert!(generated);
+        let (secret_again, generated_again) = get_or_create_client_secret().unwrap();
+        assert!(!generated_again);
+        assert_eq!(secret.to_bytes(), secret_again.to_bytes());
+
+        unsafe {
+            std::env::remove_var("LAPLINK_CONFIG_DIR");
+        }
     }
 }

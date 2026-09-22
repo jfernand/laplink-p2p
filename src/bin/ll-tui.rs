@@ -17,8 +17,8 @@ use iroh_tickets::endpoint::EndpointTicket;
 use laplink_p2p::{
     RelayModeOption,
     endpoint::{EndpointConfig, build_endpoint},
-    get_or_create_secret,
     listing::{Entry, Listing, fetch_listing, subscribe_listing},
+    ticket_storage::get_or_create_client_secret,
     update::{UpdateCandidate, find_available_update},
 };
 use n0_future::StreamExt;
@@ -487,7 +487,7 @@ async fn main() -> anyhow::Result<()> {
             anyhow::anyhow!("no ticket provided and no previous ticket remembered")
         })?,
     };
-    let (secret_key, _) = get_or_create_secret()?;
+    let (secret_key, _) = get_or_create_client_secret()?;
 
     let endpoint = build_endpoint(EndpointConfig {
         secret_key: secret_key.clone(),
