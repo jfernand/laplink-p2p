@@ -1,5 +1,7 @@
 # laplink-p2p
 
+[![CI](https://github.com/jfernand/laplink-p2p/actions/workflows/ci.yml/badge.svg)](https://github.com/jfernand/laplink-p2p/actions/workflows/ci.yml)
+
 This is an example application using [iroh](https://crates.io/crates/iroh) with
 the [iroh-blobs](https://crates.io/crates/iroh-blobs) protocol to send files and
 directories over the internet, and to browse/download files from a small
